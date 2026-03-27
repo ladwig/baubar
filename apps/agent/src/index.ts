@@ -8,6 +8,7 @@ import { buildTools, buildSystemPrompt } from '@baubar/ai'
 import { whatsappChannel } from './channels/whatsapp'
 import { AuthError, resolveOrgContext } from './lib/auth'
 import { getOrCreateThread, loadHistory, persistTurn, createFreshThread, verifyThreadOwnership } from './lib/thread-store'
+import { checkRateLimit } from './lib/rate-limit'
 
 const google = createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_API_KEY })
 const _groq = createGroq({ apiKey: process.env.GROQ_API_KEY }) // kept as fallback
@@ -74,6 +75,14 @@ app.post('/chat', async (c) => {
     if (!token) return c.json({ error: 'Unauthorized' }, 401)
 
     const ctx = await resolveOrgContext(token)
+
+    const { allowed, retryAfterMs } = checkRateLimit(ctx.userId)
+    if (!allowed) {
+      return c.json(
+        { error: 'Too many requests', retryAfterSeconds: Math.ceil(retryAfterMs / 1000) },
+        429,
+      )
+    }
 
     // useChat sends { messages: CoreMessage[], threadId?: string } — read body once
     const { messages: clientMessages, threadId: requestedThreadId } = await c.req.json()
