@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { ChevronRight, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { ChevronRight, ImagePlus, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { StatusBadge, ActivityFeed, PageHeader, CustomFieldsForm } from '@baubar/ui'
 import { cachedFetch, invalidate, TTL } from '@/lib/cache'
 
@@ -21,12 +21,15 @@ type Project = {
   company: { id: string; name: string } | null
 }
 
+type ReportImage = { id: string; storage_path: string; url: string }
+
 type Report = {
   id: string
   report_type: string
   text_content: string | null
   created_at: string | null
   author: { id: string; full_name: string | null } | null
+  images: ReportImage[]
 }
 
 type ActivityEvent = {
@@ -81,6 +84,14 @@ export default function ProjectDetailPage() {
   const [editReportType, setEditReportType] = useState('')
   const [editReportText, setEditReportText] = useState('')
   const [savingReport, setSavingReport] = useState(false)
+
+  // Image upload state (edit mode)
+  const [uploadingImageForReport, setUploadingImageForReport] = useState<string | null>(null)
+  const editFileInputRef = useRef<HTMLInputElement | null>(null)
+
+  // New report staged files
+  const [newReportFiles, setNewReportFiles] = useState<File[]>([])
+  const newReportFileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     cachedFetch<Project>(`/api/v1/projects/${id}`, TTL.DETAIL)
@@ -158,11 +169,20 @@ export default function ProjectDetailPage() {
       body: JSON.stringify({ report_type: reportType, text_content: reportText }),
     })
     if (res.ok) {
+      const created = await res.json()
+      // Upload any staged files
+      const uploadedImages: ReportImage[] = []
+      for (const file of newReportFiles) {
+        const fd = new FormData()
+        fd.append('file', file)
+        const imgRes = await fetch(`/api/v1/projects/${id}/reports/${created.id}/images`, { method: 'POST', body: fd })
+        if (imgRes.ok) uploadedImages.push(await imgRes.json())
+      }
       invalidate(`/api/v1/projects/${id}/reports`)
-      const fresh = await cachedFetch<Report[]>(`/api/v1/projects/${id}/reports`, TTL.LIST)
-      setReports(fresh)
+      setReports((prev) => [{ ...created, images: uploadedImages }, ...prev])
     }
     setReportText('')
+    setNewReportFiles([])
     setShowReportForm(false)
     setSubmitting(false)
   }
@@ -194,6 +214,32 @@ export default function ProjectDetailPage() {
     await fetch(`/api/v1/projects/${id}/reports/${reportId}`, { method: 'DELETE' })
     invalidate(`/api/v1/projects/${id}/reports`)
     setReports((prev) => prev.filter((r) => r.id !== reportId))
+  }
+
+  async function handleUploadImageInEdit(reportId: string, file: File) {
+    setUploadingImageForReport(reportId)
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await fetch(`/api/v1/projects/${id}/reports/${reportId}/images`, {
+      method: 'POST',
+      body: formData,
+    })
+    if (res.ok) {
+      const newImage: ReportImage = await res.json()
+      invalidate(`/api/v1/projects/${id}/reports`)
+      setReports((prev) =>
+        prev.map((r) => r.id === reportId ? { ...r, images: [...r.images, newImage] } : r)
+      )
+    }
+    setUploadingImageForReport(null)
+  }
+
+  async function handleDeleteImage(reportId: string, imageId: string) {
+    await fetch(`/api/v1/projects/${id}/reports/${reportId}/images/${imageId}`, { method: 'DELETE' })
+    invalidate(`/api/v1/projects/${id}/reports`)
+    setReports((prev) =>
+      prev.map((r) => r.id === reportId ? { ...r, images: r.images.filter((i) => i.id !== imageId) } : r)
+    )
   }
 
   async function handleDelete() {
@@ -463,12 +509,45 @@ export default function ProjectDetailPage() {
                   placeholder="Beschreibung, Beobachtungen, Maßnahmen..."
                   className="flex w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-zinc-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 resize-none" />
               </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-zinc-700">Fotos</label>
+                <input
+                  ref={newReportFileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? [])
+                    setNewReportFiles((prev) => [...prev, ...files])
+                    e.target.value = ''
+                  }}
+                />
+                {newReportFiles.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-1">
+                    {newReportFiles.map((f, i) => (
+                      <div key={i} className="flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-600">
+                        {f.name}
+                        <button type="button" onClick={() => setNewReportFiles((prev) => prev.filter((_, j) => j !== i))}
+                          className="text-zinc-400 hover:text-red-500 transition-colors">
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button type="button" onClick={() => newReportFileInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 self-start rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 transition-colors">
+                  <ImagePlus className="h-3.5 w-3.5" />
+                  Foto hinzufügen
+                </button>
+              </div>
               <div className="flex gap-2">
                 <button onClick={handleAddReport} disabled={submitting}
                   className="inline-flex h-9 items-center rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 transition-colors">
                   {submitting ? 'Wird gespeichert...' : 'Speichern'}
                 </button>
-                <button onClick={() => setShowReportForm(false)}
+                <button onClick={() => { setShowReportForm(false); setNewReportFiles([]) }}
                   className="inline-flex h-9 items-center rounded-md border border-zinc-200 px-4 text-sm font-medium text-zinc-600 hover:bg-zinc-50 transition-colors">
                   Abbrechen
                 </button>
@@ -495,6 +574,47 @@ export default function ProjectDetailPage() {
                         <label className="text-sm font-medium text-zinc-700">Inhalt</label>
                         <textarea value={editReportText} onChange={(e) => setEditReportText(e.target.value)} rows={4}
                           className="flex w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 resize-none" />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-sm font-medium text-zinc-700">Fotos</label>
+                        <input
+                          ref={editFileInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) handleUploadImageInEdit(r.id, file)
+                            e.target.value = ''
+                          }}
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          {r.images.map((img) => (
+                            <div key={img.id} className="relative group">
+                              <img src={img.url} alt="" className="h-16 w-16 rounded-md object-cover border border-zinc-200" />
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteImage(r.id, img.id)}
+                                className="absolute -top-1.5 -right-1.5 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white shadow"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                          {uploadingImageForReport === r.id && (
+                            <div className="h-16 w-16 rounded-md border border-zinc-200 bg-zinc-50 flex items-center justify-center">
+                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-700" />
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => editFileInputRef.current?.click()}
+                            disabled={uploadingImageForReport === r.id}
+                            className="h-16 w-16 rounded-md border-2 border-dashed border-zinc-200 flex items-center justify-center text-zinc-400 hover:border-zinc-400 hover:text-zinc-600 disabled:opacity-50 transition-colors"
+                          >
+                            <ImagePlus className="h-5 w-5" />
+                          </button>
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <button onClick={() => handleSaveReport(r.id)} disabled={savingReport}
@@ -527,6 +647,15 @@ export default function ProjectDetailPage() {
                         </div>
                       </div>
                       <p className="text-sm text-zinc-700 whitespace-pre-wrap">{r.text_content}</p>
+                      {r.images.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {r.images.map((img) => (
+                            <a key={img.id} href={img.url} target="_blank" rel="noopener noreferrer">
+                              <img src={img.url} alt="" className="h-20 w-20 rounded-md object-cover border border-zinc-200 hover:opacity-90 transition-opacity" />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
