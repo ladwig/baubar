@@ -1,0 +1,25 @@
+{
+  "name": "@baubar/db",
+  "version": "0.0.1",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts",
+    "./client": "./src/client.ts"
+  },
+  "scripts": {
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.38.3",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@baubar/config": "*",
+    "drizzle-kit": "^0.30.1",
+    "typescript": "^5.7.3"
+  },
+  "tsconfig": {
+    "extends": "@baubar/config/tsconfig"
+  }
+}
