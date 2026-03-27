@@ -69,6 +69,7 @@ export function buildTools(ctx: OrgContext) {
     list_reports: tool({
       description:
         'List all reports for a specific project, newest first. ' +
+        'Use this to answer any question about actual work progress, completion of phases, or what has happened on site — reports contain the real progress, not the project status field. ' +
         'IMPORTANT: project_id must be the UUID `id` field from list_projects, NOT the project name.',
       parameters: z.object({
         project_id: z.string().uuid().describe('UUID `id` from list_projects — never a name or label'),
