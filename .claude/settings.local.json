@@ -9,7 +9,11 @@
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
       "Bash(npx next:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(node:*)",
+      "Bash(/Users/daniel/Development/baubar/apps/agent/.env.local:*)",
+      "Bash(curl:*)",
+      "Bash(source /Users/daniel/Development/baubar/apps/agent/.env.local)"
     ]
   },
   "enableAllProjectMcpServers": true,

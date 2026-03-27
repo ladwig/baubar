@@ -33,7 +33,7 @@ export type ProvisionedNumber = {
 export type NormalizedMessage = {
   provider:           'twilio' | 'meta'
   orgId:              string
-  companyNumberId:    string
+  orgNumberId:        string  // FK → gateway.company_numbers.id
   from:               string
   to:                 string
   isGroup:            boolean

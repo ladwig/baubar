@@ -1,11 +1,11 @@
 import { db, aiThreads, aiMessages } from '@baubar/db'
-import { eq, asc, and } from 'drizzle-orm'
+import { eq, asc, and, desc } from 'drizzle-orm'
 import type { Channel, ThreadMessage } from '@baubar/ai'
 
 const HISTORY_LIMIT = 40 // rolling window — last N messages sent to LLM
 
 /**
- * Find or create a thread for (orgId, channel, externalId).
+ * Find or create the default thread for (orgId, channel, externalId).
  * externalId is the user UUID for web/mobile, E.164 phone for WhatsApp.
  */
 export async function getOrCreateThread(
@@ -21,6 +21,7 @@ export async function getOrCreateThread(
       eq(aiThreads.channel, channel),
       eq(aiThreads.external_id, externalId),
     ))
+    .orderBy(desc(aiThreads.created_at))
     .limit(1)
 
   if (existing[0]) return existing[0].id
@@ -31,6 +32,32 @@ export async function getOrCreateThread(
     .returning({ id: aiThreads.id })
 
   return created!.id
+}
+
+/**
+ * Create a fresh thread — used when the user starts a new conversation.
+ * Uses a unique external_id so multiple threads can exist per user.
+ */
+export async function createFreshThread(
+  orgId: string,
+  channel: Channel,
+  userId: string,
+): Promise<string> {
+  const [created] = await db
+    .insert(aiThreads)
+    .values({ org_id: orgId, channel, external_id: `${userId}:${Date.now()}` })
+    .returning({ id: aiThreads.id })
+  return created!.id
+}
+
+/** Verify a thread belongs to the given org (ownership check). */
+export async function verifyThreadOwnership(threadId: string, orgId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: aiThreads.id })
+    .from(aiThreads)
+    .where(and(eq(aiThreads.id, threadId), eq(aiThreads.org_id, orgId)))
+    .limit(1)
+  return !!row
 }
 
 /** Load the last N messages for a thread, oldest first. */

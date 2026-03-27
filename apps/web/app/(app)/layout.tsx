@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getOrgContext } from '@/lib/auth'
 import { Sidebar } from '@/components/sidebar'
 import { LogoutButton } from '@/components/logout-button'
+import { ChatBubble } from './components/chat-bubble'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, orgId } = await getOrgContext()
@@ -28,6 +29,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {children}
         </div>
       </main>
+      <ChatBubble />
     </div>
   )
 }

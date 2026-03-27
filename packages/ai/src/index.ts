@@ -1,5 +1,5 @@
 export { buildTools } from './tools/index'
-export { runAgent } from './runner'
+export { runAgent, buildSystemPrompt } from './runner'
 export { SupabaseQueueAdapter } from './queue/supabase'
 export type { QueueAdapter, QueueEvent } from './queue/types'
 export type { OrgContext, Channel, InboundMessage, ThreadMessage, MessageContentPart } from './types'

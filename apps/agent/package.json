@@ -3,14 +3,16 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "node --env-file=.env.local --import tsx --watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^1.2.12",
+    "@ai-sdk/google": "^1.2.0",
+    "@ai-sdk/groq": "^1.2.9",
     "@baubar/ai": "*",
+    "dotenv": "^16.4.7",
     "@baubar/db": "*",
     "@hono/node-server": "^1.14.1",
     "@supabase/supabase-js": "^2.49.2",

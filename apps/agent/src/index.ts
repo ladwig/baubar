@@ -1,11 +1,17 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serve } from '@hono/node-server'
-import { ZodError } from 'zod'
-import { handleIncoming } from './router'
-import { webChannel } from './channels/web'
+import { streamText } from 'ai'
+import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { createGroq } from '@ai-sdk/groq'
+import { buildTools, buildSystemPrompt } from '@baubar/ai'
 import { whatsappChannel } from './channels/whatsapp'
-import { AuthError } from './lib/auth'
+import { AuthError, resolveOrgContext } from './lib/auth'
+import { getOrCreateThread, loadHistory, persistTurn, createFreshThread, verifyThreadOwnership } from './lib/thread-store'
+
+const google = createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_API_KEY })
+const _groq = createGroq({ apiKey: process.env.GROQ_API_KEY }) // kept as fallback
+const model = google('gemini-2.5-flash')
 
 const app = new Hono()
 
@@ -15,15 +21,98 @@ app.use('*', cors({
 }))
 
 // ---------------------------------------------------------------------------
-// Web / mobile channel — synchronous request/response
+// Web / mobile channel — streaming SSE (Vercel AI SDK data stream protocol)
 // ---------------------------------------------------------------------------
-app.post('/chat', async (c) => {
+
+/** GET /chat — return message history for the current user's thread */
+app.get('/chat', async (c) => {
   try {
-    const text = await handleIncoming(webChannel, c)
-    return c.json({ reply: text })
+    const token = c.req.header('Authorization')?.replace('Bearer ', '')
+    if (!token) return c.json({ error: 'Unauthorized' }, 401)
+
+    const ctx = await resolveOrgContext(token)
+    const requestedThreadId = c.req.query('threadId')
+
+    let threadId: string
+    if (requestedThreadId) {
+      const valid = await verifyThreadOwnership(requestedThreadId, ctx.orgId)
+      if (!valid) return c.json({ error: 'Not found' }, 404)
+      threadId = requestedThreadId
+    } else {
+      threadId = await getOrCreateThread(ctx.orgId, 'web', ctx.userId)
+    }
+
+    const history = await loadHistory(threadId)
+    return c.json({ threadId, messages: history })
   } catch (err) {
     if (err instanceof AuthError) return c.json({ error: err.message }, 401)
-    if (err instanceof ZodError) return c.json({ error: err.flatten() }, 422)
+    console.error('[GET /chat]', err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+/** POST /thread — create a fresh thread, returns { threadId } */
+app.post('/thread', async (c) => {
+  try {
+    const token = c.req.header('Authorization')?.replace('Bearer ', '')
+    if (!token) return c.json({ error: 'Unauthorized' }, 401)
+
+    const ctx = await resolveOrgContext(token)
+    const threadId = await createFreshThread(ctx.orgId, 'web', ctx.userId)
+    return c.json({ threadId })
+  } catch (err) {
+    if (err instanceof AuthError) return c.json({ error: err.message }, 401)
+    console.error('[POST /thread]', err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+app.post('/chat', async (c) => {
+  console.log('[/chat] incoming')
+  try {
+    const token = c.req.header('Authorization')?.replace('Bearer ', '')
+    if (!token) return c.json({ error: 'Unauthorized' }, 401)
+
+    const ctx = await resolveOrgContext(token)
+
+    // useChat sends { messages: CoreMessage[], threadId?: string } — read body once
+    const { messages: clientMessages, threadId: requestedThreadId } = await c.req.json()
+    const lastUserMessage: string = clientMessages?.at(-1)?.content ?? ''
+
+    let threadId: string
+    if (requestedThreadId) {
+      const valid = await verifyThreadOwnership(requestedThreadId, ctx.orgId)
+      threadId = valid ? requestedThreadId : await getOrCreateThread(ctx.orgId, 'web', ctx.userId)
+    } else {
+      threadId = await getOrCreateThread(ctx.orgId, 'web', ctx.userId)
+    }
+
+    const history = await loadHistory(threadId)
+
+    const result = streamText({
+      model,
+      system: buildSystemPrompt(),
+      messages: [
+        ...history,
+        { role: 'user' as const, content: lastUserMessage },
+      ] as Parameters<typeof streamText>[0]['messages'],
+      tools: buildTools({ ...ctx, apiBase: process.env.WEB_API_BASE! }),
+      maxSteps: 5,
+      onError: (err) => {
+        console.error('[/chat] streamText error:', err)
+      },
+      onFinish: async ({ text }) => {
+        try {
+          await persistTurn(threadId, lastUserMessage, text)
+        } catch (err) {
+          console.error('[/chat] persistTurn error:', err)
+        }
+      },
+    })
+
+    return result.toDataStreamResponse()
+  } catch (err) {
+    if (err instanceof AuthError) return c.json({ error: err.message }, 401)
     console.error('[/chat]', err)
     return c.json({ error: 'Internal server error' }, 500)
   }
@@ -39,14 +128,10 @@ app.get('/webhooks/whatsapp', (c) => {
 })
 
 app.post('/webhooks/whatsapp', async (c) => {
-  try {
-    await handleIncoming(whatsappChannel, c)
-    return c.json({ ok: true }) // provider expects 200 quickly
-  } catch (err) {
-    console.error('[/webhooks/whatsapp]', err)
-    // Always return 200 to the provider — errors go to our logs, not retried
-    return c.json({ ok: true })
-  }
+  // TODO: verify signature → parse message → publish to ai.queue for async processing
+  // Always return 200 immediately so the provider doesn't retry
+  void whatsappChannel.parse(c).catch((err) => console.error('[/webhooks/whatsapp]', err))
+  return c.json({ ok: true })
 })
 
 // ---------------------------------------------------------------------------
