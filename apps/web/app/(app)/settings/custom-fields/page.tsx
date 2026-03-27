@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@baubar/ui'
+import { cachedFetch, invalidate, TTL } from '@/lib/cache'
 
 type FieldDef = {
   id: string; name: string; label: string; entity_type: string; field_type: string
@@ -34,8 +35,7 @@ export default function CustomFieldsPage() {
 
   const load = () => {
     setLoading(true)
-    fetch(`/api/v1/admin/custom-fields?entity_type=${activeEntity}`)
-      .then((r) => r.json())
+    cachedFetch<FieldDef[]>(`/api/v1/admin/custom-fields?entity_type=${activeEntity}`, TTL.REFERENCE)
       .then((d) => { setFields(d); setLoading(false) })
   }
 
@@ -63,6 +63,7 @@ export default function CustomFieldsPage() {
     setForm({ name: '', label: '', field_type: 'text', options: '' })
     setShowForm(false)
     setSubmitting(false)
+    invalidate(`/api/v1/admin/custom-fields?entity_type=${activeEntity}`)
     load()
   }
 
@@ -73,6 +74,7 @@ export default function CustomFieldsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
+    invalidate(`/api/v1/admin/custom-fields?entity_type=${activeEntity}`)
     load()
   }
 

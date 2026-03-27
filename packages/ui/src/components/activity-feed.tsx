@@ -5,6 +5,7 @@ interface ActivityEvent {
   id: string
   event_type: string
   summary: string | null
+  changes?: Record<string, { old: unknown; new: unknown }> | null
   created_at: string
   actor?: {
     full_name: string | null
@@ -14,6 +15,21 @@ interface ActivityEvent {
 interface ActivityFeedProps {
   events: ActivityEvent[]
   className?: string
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  name: 'Name',
+  address: 'Adresse',
+  planned_hours: 'Geplante Stunden',
+  status: 'Status',
+  industry: 'Branche',
+  email: 'E-Mail',
+  phone: 'Telefon',
+  contact_type: 'Typ',
+  first_name: 'Vorname',
+  last_name: 'Nachname',
+  text_content: 'Inhalt',
+  report_type: 'Berichtstyp',
 }
 
 function timeAgo(dateStr: string): string {
@@ -35,10 +51,10 @@ function eventTypeLabel(type: string): string {
     'project.deleted': 'Archiviert',
     'company.created': 'Erstellt',
     'company.updated': 'Aktualisiert',
-    'company.deleted': 'Deaktiviert',
+    'company.deleted': 'Archiviert',
     'contact.created': 'Erstellt',
     'contact.updated': 'Aktualisiert',
-    'contact.deleted': 'Deaktiviert',
+    'contact.deleted': 'Archiviert',
     'report.created': 'Bericht erstellt',
     'report.updated': 'Bericht aktualisiert',
     'report.deleted': 'Bericht archiviert',
@@ -50,6 +66,11 @@ function eventDotColor(type: string): string {
   if (type.endsWith('.deleted')) return 'bg-red-400'
   if (type.endsWith('.created')) return 'bg-green-400'
   return 'bg-blue-400'
+}
+
+function formatValue(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '—'
+  return String(v)
 }
 
 export function ActivityFeed({ events, className }: ActivityFeedProps) {
@@ -77,6 +98,20 @@ export function ActivityFeed({ events, className }: ActivityFeedProps) {
               <span className="text-xs text-zinc-400">{timeAgo(event.created_at)}</span>
             </div>
             <p className="mt-0.5 text-sm text-zinc-700">{event.summary}</p>
+            {event.changes && Object.keys(event.changes).length > 0 && (
+              <dl className="mt-1.5 space-y-0.5">
+                {Object.entries(event.changes).map(([k, v]) => (
+                  <div key={k} className="flex items-baseline gap-1 text-xs text-zinc-500">
+                    <dt className="font-medium shrink-0">{FIELD_LABELS[k] ?? k}:</dt>
+                    <dd>
+                      <span className="line-through text-zinc-400">{formatValue(v.old)}</span>
+                      <span className="mx-1 text-zinc-300">→</span>
+                      <span className="text-zinc-700">{formatValue(v.new)}</span>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
             {event.actor?.full_name && (
               <p className="mt-0.5 text-xs text-zinc-400">{event.actor.full_name}</p>
             )}

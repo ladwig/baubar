@@ -1,5 +1,5 @@
 import { eq, and, isNull } from 'drizzle-orm'
-import { db, projects, customFieldDefinitions } from '@baubar/db'
+import { db, projects, projectStatuses, customFieldDefinitions } from '@baubar/db'
 import type { CustomFieldDefinition } from '@baubar/db'
 import { emitEvent } from '../events'
 import { buildCustomPropertiesSchema } from '../schemas/custom-fields'
@@ -60,6 +60,14 @@ export async function updateProject(
   const data = updateProjectSchema(customSchema).parse(input)
 
   return await db.transaction(async (tx) => {
+    // Fetch old state for change tracking
+    const [old] = await tx
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.org_id, orgId), isNull(projects.deleted_at)))
+
+    if (!old) throw new Error('Project not found')
+
     const [project] = await tx
       .update(projects)
       .set({ ...data, custom_properties: data.custom_properties ?? undefined })
@@ -68,6 +76,36 @@ export async function updateProject(
 
     if (!project) throw new Error('Project not found')
 
+    // Compute diff for human-readable change log
+    const changes: Record<string, { old: unknown; new: unknown }> = {}
+
+    for (const f of ['name', 'address', 'planned_hours'] as const) {
+      if (String(old[f] ?? '') !== String(project[f] ?? '')) {
+        changes[f] = { old: old[f], new: project[f] }
+      }
+    }
+
+    if (old.status_id !== project.status_id) {
+      const resolveLabel = async (id: string | null) => {
+        if (!id) return null
+        const [s] = await tx.select({ label: projectStatuses.label }).from(projectStatuses).where(eq(projectStatuses.id, id))
+        return s?.label ?? id
+      }
+      changes.status = {
+        old: await resolveLabel(old.status_id),
+        new: await resolveLabel(project.status_id),
+      }
+    }
+
+    // Diff custom_properties
+    const oldProps = (old.custom_properties ?? {}) as Record<string, unknown>
+    const newProps = (project.custom_properties ?? {}) as Record<string, unknown>
+    for (const key of new Set([...Object.keys(oldProps), ...Object.keys(newProps)])) {
+      if (String(oldProps[key] ?? '') !== String(newProps[key] ?? '')) {
+        changes[key] = { old: oldProps[key] ?? null, new: newProps[key] ?? null }
+      }
+    }
+
     await emitEvent(tx as any, {
       org_id: orgId,
       actor_id: actorId,
@@ -75,6 +113,7 @@ export async function updateProject(
       entity_type: 'project',
       entity_id: project.id,
       summary: `Projekt "${project.name}" wurde aktualisiert`,
+      changes: Object.keys(changes).length > 0 ? changes : undefined,
       payload: { project },
     })
 

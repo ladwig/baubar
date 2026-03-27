@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, GripVertical } from 'lucide-react'
 import { PageHeader, StatusBadge } from '@baubar/ui'
+import { cachedFetch, invalidate, TTL } from '@/lib/cache'
 
 type Status = {
   id: string; label: string; status_type: string; color: string; sort_order: number; is_default: boolean
@@ -24,7 +25,7 @@ export default function StatusesPage() {
   const [submitting, setSubmitting] = useState(false)
 
   const load = () =>
-    fetch('/api/v1/admin/statuses').then((r) => r.json()).then((d) => { setStatuses(d); setLoading(false) })
+    cachedFetch<Status[]>('/api/v1/admin/statuses', TTL.REFERENCE).then((d) => { setStatuses(d); setLoading(false) })
 
   useEffect(() => { load() }, [])
 
@@ -39,6 +40,7 @@ export default function StatusesPage() {
     setForm({ label: '', status_type: 'OPEN', color: '#6B7280' })
     setShowForm(false)
     setSubmitting(false)
+    invalidate('/api/v1/admin/statuses')
     load()
   }
 

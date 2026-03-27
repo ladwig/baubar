@@ -58,6 +58,13 @@ export async function updateCompany(
   const data = updateCompanySchema(buildCustomPropertiesSchema(defs)).parse(input)
 
   return await db.transaction(async (tx) => {
+    const [old] = await tx
+      .select()
+      .from(companies)
+      .where(and(eq(companies.id, companyId), eq(companies.org_id, orgId), isNull(companies.deleted_at)))
+
+    if (!old) throw new Error('Company not found')
+
     const [company] = await tx
       .update(companies)
       .set(data)
@@ -66,6 +73,21 @@ export async function updateCompany(
 
     if (!company) throw new Error('Company not found')
 
+    const changes: Record<string, { old: unknown; new: unknown }> = {}
+    for (const f of ['name', 'address', 'industry'] as const) {
+      if ((old[f] ?? '') !== (company[f] ?? '')) {
+        changes[f] = { old: old[f], new: company[f] }
+      }
+    }
+
+    const oldProps = (old.custom_properties ?? {}) as Record<string, unknown>
+    const newProps = (company.custom_properties ?? {}) as Record<string, unknown>
+    for (const key of new Set([...Object.keys(oldProps), ...Object.keys(newProps)])) {
+      if (String(oldProps[key] ?? '') !== String(newProps[key] ?? '')) {
+        changes[key] = { old: oldProps[key] ?? null, new: newProps[key] ?? null }
+      }
+    }
+
     await emitEvent(tx as any, {
       org_id: orgId,
       actor_id: actorId,
@@ -73,6 +95,7 @@ export async function updateCompany(
       entity_type: 'company',
       entity_id: company.id,
       summary: `Unternehmen "${company.name}" wurde aktualisiert`,
+      changes: Object.keys(changes).length > 0 ? changes : undefined,
       payload: { company },
     })
 

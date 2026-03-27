@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 import { PageHeader, CustomFieldsForm } from '@baubar/ui'
+import { invalidate } from '@/lib/cache'
 
 type FieldDef = { id: string; name: string; label: string; field_type: string; options?: string[] | null; sort_order?: number | null }
 
@@ -38,6 +39,7 @@ export default function NewCompanyPage() {
     }
 
     const company = await res.json()
+    invalidate('/api/v1/companies')
     router.push(`/companies/${company.id}`)
   }
 

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 import { PageHeader, CustomFieldsForm } from '@baubar/ui'
+import { invalidate } from '@/lib/cache'
 
 type Status = { id: string; label: string; color: string }
 type Company = { id: string; name: string }
@@ -74,6 +75,7 @@ export default function NewProjectPage() {
     }
 
     const project = await res.json()
+    invalidate('/api/v1/projects')
     router.push(`/projects/${project.id}`)
   }
 

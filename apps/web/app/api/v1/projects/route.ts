@@ -12,12 +12,18 @@ export async function GET(req: NextRequest) {
   const statusType = searchParams.get('status_type')
   const search = searchParams.get('search')
 
+  const companyId = searchParams.get('company_id')
+  const contactId = searchParams.get('contact_id')
+
   const rows = await db
     .select({
       id: projects.id,
       name: projects.name,
       address: projects.address,
       planned_hours: projects.planned_hours,
+      custom_properties: projects.custom_properties,
+      company_id: projects.company_id,
+      contact_id: projects.contact_id,
       created_at: projects.created_at,
       status: {
         id: projectStatuses.id,
@@ -37,9 +43,9 @@ export async function GET(req: NextRequest) {
     .orderBy(desc(projects.created_at))
 
   let result = rows
-  if (statusType) {
-    result = result.filter((r) => r.status?.status_type === statusType)
-  }
+  if (statusType) result = result.filter((r) => r.status?.status_type === statusType)
+  if (companyId) result = result.filter((r) => r.company_id === companyId)
+  if (contactId) result = result.filter((r) => r.contact_id === contactId)
   if (search) {
     const q = search.toLowerCase()
     result = result.filter(

@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
       name: companies.name,
       address: companies.address,
       industry: companies.industry,
+      custom_properties: companies.custom_properties,
       created_at: companies.created_at,
     })
     .from(companies)

@@ -11,6 +11,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const search = searchParams.get('search')
 
+  const companyId = searchParams.get('company_id')
+
   const rows = await db
     .select({
       id: contacts.id,
@@ -19,6 +21,7 @@ export async function GET(req: NextRequest) {
       email: contacts.email,
       phone: contacts.phone,
       contact_type: contacts.contact_type,
+      custom_properties: contacts.custom_properties,
       created_at: contacts.created_at,
       company: { id: companies.id, name: companies.name },
     })
@@ -28,6 +31,7 @@ export async function GET(req: NextRequest) {
     .orderBy(desc(contacts.created_at))
 
   let result = rows
+  if (companyId) result = result.filter((r) => r.company?.id === companyId)
   if (search) {
     const q = search.toLowerCase()
     result = result.filter(
