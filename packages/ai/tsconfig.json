@@ -1,0 +1,7 @@
+{
+  "extends": "@baubar/config/tsconfig",
+  "compilerOptions": {
+    "outDir": "dist"
+  },
+  "include": ["src"]
+}
