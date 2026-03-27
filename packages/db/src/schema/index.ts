@@ -196,6 +196,35 @@ export const events = pm.table('events', {
   processed_at: timestamp('processed_at', { withTimezone: true }),
 })
 
+// ─── AI Schema ────────────────────────────────────────────────────────────────
+
+export const ai = pgSchema('ai')
+
+export const aiThreads = ai.table('threads', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  org_id:      uuid('org_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  channel:     text('channel').notNull(), // 'web' | 'whatsapp' | 'mobile'
+  external_id: text('external_id').notNull(), // user UUID or phone number
+  created_at:  timestamp('created_at', { withTimezone: true }).defaultNow(),
+})
+
+export const aiMessages = ai.table('messages', {
+  id:         uuid('id').primaryKey().defaultRandom(),
+  thread_id:  uuid('thread_id').notNull().references(() => aiThreads.id, { onDelete: 'cascade' }),
+  role:       text('role').notNull(), // 'user' | 'assistant'
+  content:    jsonb('content').notNull(), // MessageContentPart[]
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
+})
+
+export const aiConfigs = ai.table('configs', {
+  id:            uuid('id').primaryKey().defaultRandom(),
+  org_id:        uuid('org_id').notNull().unique().references(() => organizations.id, { onDelete: 'cascade' }),
+  system_prompt: text('system_prompt'),
+  language:      text('language').default('de'),
+  created_at:    timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updated_at:    timestamp('updated_at', { withTimezone: true }).defaultNow(),
+})
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type Organization = typeof organizations.$inferSelect
 export type User = typeof users.$inferSelect
@@ -210,3 +239,6 @@ export type ProjectReport = typeof projectReports.$inferSelect
 export type ReportImage = typeof reportImages.$inferSelect
 export type ReportComment = typeof reportComments.$inferSelect
 export type Event = typeof events.$inferSelect
+export type AiThread = typeof aiThreads.$inferSelect
+export type AiMessage = typeof aiMessages.$inferSelect
+export type AiConfig = typeof aiConfigs.$inferSelect
