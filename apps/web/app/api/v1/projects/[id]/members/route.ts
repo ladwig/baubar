@@ -9,10 +9,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   if (error) return error
 
   const rows = await db
-    .select({ user_id: users.id, full_name: users.full_name, role: projectMembers.role })
+    .select({ user_id: users.id, full_name: users.full_name, role: projectMembers.role, removed_at: projectMembers.deleted_at })
     .from(projectMembers)
     .innerJoin(users, eq(projectMembers.user_id, users.id))
-    .where(and(eq(projectMembers.project_id, params.id), isNull(projectMembers.deleted_at)))
+    .where(eq(projectMembers.project_id, params.id))
 
   return NextResponse.json(rows)
 }

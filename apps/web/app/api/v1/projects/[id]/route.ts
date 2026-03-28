@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { eq, and, isNull } from 'drizzle-orm'
-import { db, projects, projectStatuses, companies, contacts, customFieldDefinitions } from '@baubar/db'
+import { db, projects, projectStatuses, companies, contacts } from '@baubar/db'
 import { updateProject, deleteProject } from '@baubar/core/mutations/projects'
 import { requireOrgContext, handleError } from '@/lib/api'
 
@@ -28,11 +28,19 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       company: {
         id: companies.id,
         name: companies.name,
+        deleted_at: companies.deleted_at,
+      },
+      contact: {
+        id: contacts.id,
+        first_name: contacts.first_name,
+        last_name: contacts.last_name,
+        deleted_at: contacts.deleted_at,
       },
     })
     .from(projects)
     .leftJoin(projectStatuses, eq(projects.status_id, projectStatuses.id))
     .leftJoin(companies, eq(projects.company_id, companies.id))
+    .leftJoin(contacts, eq(projects.contact_id, contacts.id))
     .where(and(eq(projects.id, params.id), eq(projects.org_id, ctx!.orgId), isNull(projects.deleted_at)))
     .limit(1)
 

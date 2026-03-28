@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get('search')
 
   const companyId = searchParams.get('company_id')
+  const includeArchived = searchParams.get('include_archived') === 'true'
 
   const rows = await db
     .select({
@@ -27,7 +28,10 @@ export async function GET(req: NextRequest) {
     })
     .from(contacts)
     .leftJoin(companies, eq(contacts.company_id, companies.id))
-    .where(and(eq(contacts.org_id, ctx!.orgId), isNull(contacts.deleted_at)))
+    .where(includeArchived
+      ? eq(contacts.org_id, ctx!.orgId)
+      : and(eq(contacts.org_id, ctx!.orgId), isNull(contacts.deleted_at))
+    )
     .orderBy(desc(contacts.created_at))
 
   let result = rows

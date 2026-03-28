@@ -3,11 +3,13 @@
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
 import { PageHeader } from '@baubar/ui'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
-type OrgUser = { id: string; full_name: string | null; role: string; created_at: string | null }
+type OrgUser = { id: string; full_name: string | null; role: string; created_at: string | null; removed_at: string | null }
 
 export default function TeamPage() {
   const [users, setUsers] = useState<OrgUser[]>([])
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ email: '', full_name: '', role: 'worker' })
@@ -20,7 +22,10 @@ export default function TeamPage() {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    createSupabaseBrowserClient().auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null))
+  }, [])
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
@@ -124,22 +129,26 @@ export default function TeamPage() {
           <p className="py-8 text-center text-sm text-zinc-400">Noch keine Mitglieder.</p>
         ) : (
           users.map((u) => (
-            <div key={u.id} className="flex items-center justify-between px-4 py-3">
+            <div key={u.id} className={`flex items-center justify-between px-4 py-3 ${u.removed_at ? 'opacity-40' : ''}`}>
               <div className="flex items-center gap-3">
                 <div className="h-8 w-8 rounded-full bg-zinc-200 flex items-center justify-center text-sm font-medium text-zinc-600 shrink-0">
                   {(u.full_name ?? '?')[0]?.toUpperCase()}
                 </div>
                 <div className="flex flex-col">
                   <span className="text-sm font-medium text-zinc-900">{u.full_name ?? '—'}</span>
-                  <span className="text-xs text-zinc-400">{u.role === 'admin' ? 'Admin' : 'Mitarbeiter'}</span>
+                  <span className="text-xs text-zinc-400">
+                    {u.removed_at ? 'Entfernt' : u.role === 'admin' ? 'Admin' : 'Mitarbeiter'}
+                  </span>
                 </div>
               </div>
-              <button
-                onClick={() => handleRemove(u.id)}
-                className="rounded p-1.5 text-zinc-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              {!u.removed_at && u.id !== currentUserId && (
+                <button
+                  onClick={() => handleRemove(u.id)}
+                  className="rounded p-1.5 text-zinc-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
             </div>
           ))
         )}

@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const search = searchParams.get('search')
+  const includeArchived = searchParams.get('include_archived') === 'true'
 
   const rows = await db
     .select({
@@ -21,7 +22,10 @@ export async function GET(req: NextRequest) {
       created_at: companies.created_at,
     })
     .from(companies)
-    .where(and(eq(companies.org_id, ctx!.orgId), isNull(companies.deleted_at)))
+    .where(includeArchived
+      ? eq(companies.org_id, ctx!.orgId)
+      : and(eq(companies.org_id, ctx!.orgId), isNull(companies.deleted_at))
+    )
     .orderBy(desc(companies.created_at))
 
   let result = rows

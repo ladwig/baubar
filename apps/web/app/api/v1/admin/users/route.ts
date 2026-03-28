@@ -10,10 +10,10 @@ export async function GET() {
   if (error) return error
 
   const rows = await db
-    .select({ id: users.id, full_name: users.full_name, role: orgMembers.role, created_at: users.created_at })
+    .select({ id: users.id, full_name: users.full_name, role: orgMembers.role, created_at: users.created_at, removed_at: orgMembers.deleted_at })
     .from(orgMembers)
     .innerJoin(users, eq(orgMembers.user_id, users.id))
-    .where(and(eq(orgMembers.org_id, ctx!.orgId), isNull(orgMembers.deleted_at)))
+    .where(eq(orgMembers.org_id, ctx!.orgId))
 
   return NextResponse.json(rows)
 }

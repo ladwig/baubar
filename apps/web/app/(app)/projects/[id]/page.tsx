@@ -18,7 +18,8 @@ type Project = {
   contact_id: string | null
   status_id: string | null
   status: { id: string; label: string; color: string } | null
-  company: { id: string; name: string } | null
+  company: { id: string; name: string; deleted_at: string | null } | null
+  contact: { id: string; first_name: string; last_name: string; deleted_at: string | null } | null
 }
 
 type ReportImage = { id: string; storage_path: string; url: string }
@@ -45,7 +46,7 @@ type Status = { id: string; label: string; color: string }
 type Company = { id: string; name: string }
 type Contact = { id: string; first_name: string; last_name: string }
 type FieldDef = { id: string; name: string; label: string; field_type: string; options?: string[] | null; sort_order?: number | null }
-type Member = { user_id: string; full_name: string | null; role: string | null }
+type Member = { user_id: string; full_name: string | null; role: string | null; removed_at: string | null }
 type OrgUser = { id: string; full_name: string | null; role: string }
 
 const TABS = ['Übersicht', 'Berichte', 'Mitglieder', 'Aktivität'] as const
@@ -155,9 +156,9 @@ export default function ProjectDetailPage() {
         name: editForm.name,
         address: editForm.address || undefined,
         planned_hours: editForm.planned_hours ? parseFloat(editForm.planned_hours) : 0,
-        status_id: editForm.status_id || undefined,
-        company_id: editForm.company_id || undefined,
-        contact_id: editForm.contact_id || undefined,
+        status_id: editForm.status_id || null,
+        company_id: editForm.company_id || null,
+        contact_id: editForm.contact_id || null,
         custom_properties: editCustomProps,
       }),
     })
@@ -383,13 +384,35 @@ export default function ProjectDetailPage() {
 
             <div className="rounded-lg border border-zinc-200 bg-white p-5">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-3">Auftraggeber</h3>
-              {project.company ? (
-                <div className="flex flex-col gap-1">
-                  <Link href={`/companies/${project.company.id}`} className="text-sm font-medium text-zinc-900 hover:underline">
-                    {project.company.name}
-                  </Link>
-                  <span className="text-xs text-zinc-400">Unternehmen</span>
-                </div>
+              {project.company || project.contact ? (
+                <dl className="space-y-2.5">
+                  {project.company && (
+                    <div className={project.company.deleted_at ? 'opacity-50' : ''}>
+                      <dt className="text-xs text-zinc-400 mb-0.5">Unternehmen</dt>
+                      <div className="flex items-center gap-2">
+                        <Link href={`/companies/${project.company.id}`} className="text-sm font-medium text-zinc-900 hover:underline">
+                          {project.company.name}
+                        </Link>
+                        {project.company.deleted_at && (
+                          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-zinc-100 text-zinc-500">Archiviert</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {project.contact && (
+                    <div className={project.contact.deleted_at ? 'opacity-50' : ''}>
+                      <dt className="text-xs text-zinc-400 mb-0.5">Kontaktperson</dt>
+                      <div className="flex items-center gap-2">
+                        <Link href={`/contacts/${project.contact.id}`} className="text-sm font-medium text-zinc-900 hover:underline">
+                          {project.contact.first_name} {project.contact.last_name}
+                        </Link>
+                        {project.contact.deleted_at && (
+                          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-zinc-100 text-zinc-500">Archiviert</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </dl>
               ) : (
                 <p className="text-sm text-zinc-400">Kein Auftraggeber zugeordnet.</p>
               )}
@@ -755,19 +778,28 @@ export default function ProjectDetailPage() {
               <p className="py-8 text-center text-sm text-zinc-400">Keine Mitglieder zugeordnet.</p>
             ) : (
               members.map((m) => (
-                <div key={m.user_id} className="flex items-center justify-between px-4 py-3">
+                <div key={m.user_id} className={`flex items-center justify-between px-4 py-3 ${m.removed_at ? 'opacity-40' : ''}`}>
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-full bg-zinc-200 flex items-center justify-center text-sm font-medium text-zinc-600 shrink-0">
                       {(m.full_name ?? '?')[0]?.toUpperCase()}
                     </div>
-                    <span className="text-sm text-zinc-900">{m.full_name ?? '—'}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-zinc-900">{m.full_name ?? '—'}</span>
+                      {m.removed_at && (
+                        <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-zinc-100 text-zinc-500">
+                          Entfernt
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <button
-                    onClick={() => handleRemoveMember(m.user_id)}
-                    className="rounded p-1.5 text-zinc-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  {!m.removed_at && (
+                    <button
+                      onClick={() => handleRemoveMember(m.user_id)}
+                      className="rounded p-1.5 text-zinc-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               ))
             )}

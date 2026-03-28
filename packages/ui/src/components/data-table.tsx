@@ -19,6 +19,7 @@ interface DataTableProps<TData, TValue> {
   data: TData[]
   toolbar?: React.ReactNode
   onRowClick?: (row: TData) => void
+  getRowClassName?: (row: TData) => string
   emptyMessage?: string
   isLoading?: boolean
 }
@@ -28,6 +29,7 @@ export function DataTable<TData, TValue>({
   data,
   toolbar,
   onRowClick,
+  getRowClassName,
   emptyMessage = 'Keine Einträge gefunden.',
   isLoading = false,
 }: DataTableProps<TData, TValue>) {
@@ -92,7 +94,8 @@ export function DataTable<TData, TValue>({
                   onClick={() => onRowClick?.(row.original)}
                   className={cn(
                     'border-b border-zinc-50 transition-colors last:border-0',
-                    onRowClick && 'cursor-pointer hover:bg-zinc-50'
+                    onRowClick && 'cursor-pointer hover:bg-zinc-50',
+                    getRowClassName?.(row.original)
                   )}
                 >
                   {row.getVisibleCells().map((cell) => (

@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
   const statusType = searchParams.get('status_type')
   const search = searchParams.get('search')
 
+  const includeArchived = searchParams.get('include_archived') === 'true'
   const companyId = searchParams.get('company_id')
   const contactId = searchParams.get('contact_id')
 
@@ -39,7 +40,10 @@ export async function GET(req: NextRequest) {
     .from(projects)
     .leftJoin(projectStatuses, eq(projects.status_id, projectStatuses.id))
     .leftJoin(companies, eq(projects.company_id, companies.id))
-    .where(and(eq(projects.org_id, ctx!.orgId), isNull(projects.deleted_at)))
+    .where(includeArchived
+      ? eq(projects.org_id, ctx!.orgId)
+      : and(eq(projects.org_id, ctx!.orgId), isNull(projects.deleted_at))
+    )
     .orderBy(desc(projects.created_at))
 
   let result = rows

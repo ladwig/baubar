@@ -7,6 +7,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: { userId: 
   const { error, ctx } = await requireOrgContext()
   if (error) return error
 
+  if (params.userId === ctx!.user.id) {
+    return NextResponse.json({ error: 'Du kannst dich nicht selbst entfernen.' }, { status: 422 })
+  }
+
   try {
     await db
       .update(orgMembers)
