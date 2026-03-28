@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Building2, Users, FolderKanban, Settings, LogOut, BarChart3 } from 'lucide-react'
+import { Building2, Users, FolderKanban, Settings, LogOut, BarChart3, UserCog } from 'lucide-react'
 import { cn } from '@baubar/ui'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -14,6 +14,7 @@ const navItems = [
 ]
 
 const settingsItems = [
+  { href: '/settings/team', label: 'Team', icon: UserCog },
   { href: '/settings/statuses', label: 'Status', icon: BarChart3 },
   { href: '/settings/custom-fields', label: 'Felder', icon: Settings },
 ]
