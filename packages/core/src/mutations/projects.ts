@@ -135,7 +135,7 @@ export async function addProjectMember(actorId: string, orgId: string, projectId
       event_type: 'project.member_added',
       entity_type: 'project',
       entity_id: projectId,
-      summary: `Mitglied wurde zum Projekt hinzugefügt`,
+      summary: `Mitglied hinzugefügt`,
       payload: { project_id: projectId, user_id: userId },
     })
 
@@ -156,7 +156,7 @@ export async function removeProjectMember(actorId: string, orgId: string, projec
       event_type: 'project.member_removed',
       entity_type: 'project',
       entity_id: projectId,
-      summary: `Mitglied wurde aus dem Projekt entfernt`,
+      summary: `Mitglied entfernt`,
       payload: { project_id: projectId, user_id: userId },
     })
   })

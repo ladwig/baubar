@@ -38,9 +38,9 @@ export async function createReport(
       org_id: orgId,
       actor_id: actorId,
       event_type: 'report.created',
-      entity_type: 'report',
-      entity_id: report!.id,
-      summary: `Bericht vom Typ "${report!.report_type}" wurde erstellt`,
+      entity_type: 'project',
+      entity_id: projectId,
+      summary: `${report!.report_type} hinzugefügt`,
       payload: { report },
     })
 
@@ -107,9 +107,9 @@ export async function deleteReport(actorId: string, orgId: string, reportId: str
       org_id: orgId,
       actor_id: actorId,
       event_type: 'report.deleted',
-      entity_type: 'report',
-      entity_id: reportId,
-      summary: `Bericht wurde archiviert`,
+      entity_type: 'project',
+      entity_id: report.project_id,
+      summary: `${report.report_type} archiviert`,
       payload: { entity_id: reportId },
     })
   })
