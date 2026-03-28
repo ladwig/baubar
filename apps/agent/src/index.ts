@@ -7,7 +7,7 @@ import { createGroq } from '@ai-sdk/groq'
 import { buildTools, buildSystemPrompt } from '@baubar/ai'
 import { whatsappChannel } from './channels/whatsapp'
 import { AuthError, resolveOrgContext } from './lib/auth'
-import { getOrCreateThread, loadHistory, persistTurn, createFreshThread, verifyThreadOwnership } from './lib/thread-store'
+import { getOrCreateThread, loadHistory, persistTurn, createFreshThread, verifyThreadOwnership, loadOrgConfig } from './lib/thread-store'
 import { checkRateLimit } from './lib/rate-limit'
 
 const google = createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_API_KEY })
@@ -96,11 +96,14 @@ app.post('/chat', async (c) => {
       threadId = await getOrCreateThread(ctx.orgId, 'web', ctx.userId)
     }
 
-    const history = await loadHistory(threadId)
+    const [history, orgPrompt] = await Promise.all([
+      loadHistory(threadId),
+      loadOrgConfig(ctx.orgId),
+    ])
 
     const result = streamText({
       model,
-      system: buildSystemPrompt(),
+      system: buildSystemPrompt(orgPrompt),
       messages: [
         ...history,
         { role: 'user' as const, content: lastUserMessage },

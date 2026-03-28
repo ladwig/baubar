@@ -1,4 +1,4 @@
-import { db, aiThreads, aiMessages } from '@baubar/db'
+import { db, aiThreads, aiMessages, aiConfigs } from '@baubar/db'
 import { eq, asc, and, desc } from 'drizzle-orm'
 import type { Channel, ThreadMessage } from '@baubar/ai'
 
@@ -73,6 +73,16 @@ export async function loadHistory(threadId: string): Promise<ThreadMessage[]> {
     role: r.role as 'user' | 'assistant',
     content: r.content as ThreadMessage['content'],
   }))
+}
+
+/** Load the org's custom system prompt from ai.configs, or null if not set. */
+export async function loadOrgConfig(orgId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ system_prompt: aiConfigs.system_prompt })
+    .from(aiConfigs)
+    .where(eq(aiConfigs.org_id, orgId))
+    .limit(1)
+  return row?.system_prompt ?? null
 }
 
 /** Persist a user message and the assistant reply in one batch. */
