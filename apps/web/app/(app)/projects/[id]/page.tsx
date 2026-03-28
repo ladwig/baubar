@@ -45,8 +45,10 @@ type Status = { id: string; label: string; color: string }
 type Company = { id: string; name: string }
 type Contact = { id: string; first_name: string; last_name: string }
 type FieldDef = { id: string; name: string; label: string; field_type: string; options?: string[] | null; sort_order?: number | null }
+type Member = { user_id: string; full_name: string | null; role: string | null }
+type OrgUser = { id: string; full_name: string | null; role: string }
 
-const TABS = ['Übersicht', 'Berichte', 'Aktivität'] as const
+const TABS = ['Übersicht', 'Berichte', 'Mitglieder', 'Aktivität'] as const
 type Tab = (typeof TABS)[number]
 
 const REPORT_TYPES = ['Tagesbericht', 'Mängelprotokoll', 'Abnahme', 'Begehung', 'Sonstiges']
@@ -73,6 +75,12 @@ export default function ProjectDetailPage() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
+  // Members
+  const [members, setMembers] = useState<Member[]>([])
+  const [orgUsers, setOrgUsers] = useState<OrgUser[]>([])
+  const [showAddMember, setShowAddMember] = useState(false)
+  const [addingMember, setAddingMember] = useState(false)
+
   // New report form
   const [showReportForm, setShowReportForm] = useState(false)
   const [reportType, setReportType] = useState(REPORT_TYPES[0]!)
@@ -94,13 +102,18 @@ export default function ProjectDetailPage() {
   const newReportFileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
-    cachedFetch<Project>(`/api/v1/projects/${id}`, TTL.DETAIL)
-      .then((d) => { setProject(d); setLoading(false) })
+    Promise.all([
+      cachedFetch<Project>(`/api/v1/projects/${id}`, TTL.DETAIL),
+      fetch(`/api/v1/projects/${id}/members`).then((r) => r.json()),
+    ]).then(([p, m]) => { setProject(p); setMembers(m); setLoading(false) })
   }, [id])
 
   useEffect(() => {
     if (tab === 'Berichte') {
       cachedFetch<Report[]>(`/api/v1/projects/${id}/reports`, TTL.LIST).then(setReports)
+    }
+    if (tab === 'Mitglieder' && orgUsers.length === 0) {
+      fetch('/api/v1/members').then((r) => r.json()).then(setOrgUsers)
     }
     if (tab === 'Aktivität') {
       fetch(`/api/v1/events?entity_id=${id}&entity_type=project`).then((r) => r.json()).then(setActivity)
@@ -240,6 +253,30 @@ export default function ProjectDetailPage() {
     setReports((prev) =>
       prev.map((r) => r.id === reportId ? { ...r, images: r.images.filter((i) => i.id !== imageId) } : r)
     )
+  }
+
+  function handleShowAddMember() {
+    setShowAddMember(true)
+  }
+
+  async function handleAddMember(userId: string) {
+    setAddingMember(true)
+    const res = await fetch(`/api/v1/projects/${id}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId }),
+    })
+    if (res.ok) {
+      const fresh = await fetch(`/api/v1/projects/${id}/members`).then((r) => r.json())
+      setMembers(fresh)
+    }
+    setShowAddMember(false)
+    setAddingMember(false)
+  }
+
+  async function handleRemoveMember(userId: string) {
+    await fetch(`/api/v1/projects/${id}/members/${userId}`, { method: 'DELETE' })
+    setMembers((prev) => prev.filter((m) => m.user_id !== userId))
   }
 
   async function handleDelete() {
@@ -658,6 +695,79 @@ export default function ProjectDetailPage() {
                       )}
                     </>
                   )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Members */}
+      {tab === 'Mitglieder' && (
+        <div className="flex flex-col gap-4">
+          <div className="flex justify-end">
+            <button
+              onClick={handleShowAddMember}
+              className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-3.5 py-2 text-sm font-medium text-white shadow hover:bg-zinc-800 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              Mitglied hinzufügen
+            </button>
+          </div>
+
+          {showAddMember && (
+            <div className="rounded-lg border border-zinc-200 bg-white p-4">
+              <h3 className="text-sm font-semibold text-zinc-900 mb-3">Mitglied auswählen</h3>
+              {addingMember ? (
+                <p className="text-sm text-zinc-400">Wird hinzugefügt...</p>
+              ) : (
+                <div className="flex flex-col gap-1 max-h-60 overflow-y-auto">
+                  {orgUsers
+                    .filter((u) => !members.some((m) => m.user_id === u.id))
+                    .map((u) => (
+                      <button
+                        key={u.id}
+                        onClick={() => handleAddMember(u.id)}
+                        className="flex items-center gap-3 rounded-md px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50 transition-colors"
+                      >
+                        <div className="h-7 w-7 rounded-full bg-zinc-200 flex items-center justify-center text-xs font-medium text-zinc-600 shrink-0">
+                          {(u.full_name ?? '?')[0]?.toUpperCase()}
+                        </div>
+                        {u.full_name ?? '—'}
+                      </button>
+                    ))}
+                  {orgUsers.filter((u) => !members.some((m) => m.user_id === u.id)).length === 0 && (
+                    <p className="text-sm text-zinc-400">Alle Org-Mitglieder bereits zugeordnet.</p>
+                  )}
+                </div>
+              )}
+              <button
+                onClick={() => setShowAddMember(false)}
+                className="mt-3 text-sm text-zinc-400 hover:text-zinc-600"
+              >
+                Abbrechen
+              </button>
+            </div>
+          )}
+
+          <div className="rounded-lg border border-zinc-200 bg-white divide-y divide-zinc-100">
+            {members.length === 0 ? (
+              <p className="py-8 text-center text-sm text-zinc-400">Keine Mitglieder zugeordnet.</p>
+            ) : (
+              members.map((m) => (
+                <div key={m.user_id} className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-zinc-200 flex items-center justify-center text-sm font-medium text-zinc-600 shrink-0">
+                      {(m.full_name ?? '?')[0]?.toUpperCase()}
+                    </div>
+                    <span className="text-sm text-zinc-900">{m.full_name ?? '—'}</span>
+                  </div>
+                  <button
+                    onClick={() => handleRemoveMember(m.user_id)}
+                    className="rounded p-1.5 text-zinc-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
               ))
             )}

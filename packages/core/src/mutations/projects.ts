@@ -1,5 +1,5 @@
 import { eq, and, isNull } from 'drizzle-orm'
-import { db, projects, projectStatuses, customFieldDefinitions } from '@baubar/db'
+import { db, projects, projectStatuses, customFieldDefinitions, projectMembers } from '@baubar/db'
 import type { CustomFieldDefinition } from '@baubar/db'
 import { emitEvent } from '../events'
 import { buildCustomPropertiesSchema } from '../schemas/custom-fields'
@@ -118,6 +118,47 @@ export async function updateProject(
     })
 
     return project
+  })
+}
+
+export async function addProjectMember(actorId: string, orgId: string, projectId: string, userId: string) {
+  return await db.transaction(async (tx) => {
+    const [member] = await tx
+      .insert(projectMembers)
+      .values({ project_id: projectId, user_id: userId })
+      .onConflictDoUpdate({ target: [projectMembers.project_id, projectMembers.user_id], set: { deleted_at: null } })
+      .returning()
+
+    await emitEvent(tx as any, {
+      org_id: orgId,
+      actor_id: actorId,
+      event_type: 'project.member_added',
+      entity_type: 'project',
+      entity_id: projectId,
+      summary: `Mitglied wurde zum Projekt hinzugefügt`,
+      payload: { project_id: projectId, user_id: userId },
+    })
+
+    return member
+  })
+}
+
+export async function removeProjectMember(actorId: string, orgId: string, projectId: string, userId: string) {
+  return await db.transaction(async (tx) => {
+    await tx
+      .update(projectMembers)
+      .set({ deleted_at: new Date() })
+      .where(and(eq(projectMembers.project_id, projectId), eq(projectMembers.user_id, userId)))
+
+    await emitEvent(tx as any, {
+      org_id: orgId,
+      actor_id: actorId,
+      event_type: 'project.member_removed',
+      entity_type: 'project',
+      entity_id: projectId,
+      summary: `Mitglied wurde aus dem Projekt entfernt`,
+      payload: { project_id: projectId, user_id: userId },
+    })
   })
 }
 
