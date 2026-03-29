@@ -3,7 +3,7 @@ import { events } from '@baubar/db'
 
 export type DomainEventInput = {
   org_id: string
-  actor_id: string
+  actor_id: string | null
   event_type: string
   entity_type: string
   entity_id: string

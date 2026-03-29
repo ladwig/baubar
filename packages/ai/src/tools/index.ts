@@ -10,6 +10,9 @@ function headers(ctx: OrgContext) {
   return {
     Authorization: `Bearer ${ctx.token}`,
     'Content-Type': 'application/json',
+    // Required for service-to-service calls (gateway → web) so the web app
+    // knows which org to scope the request to without a Supabase JWT
+    'X-Org-Id': ctx.orgId,
   }
 }
 

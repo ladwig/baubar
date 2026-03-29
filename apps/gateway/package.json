@@ -3,18 +3,20 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "node --env-file=.env.local --import tsx --watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@baubar/ai": "*",
+    "@baubar/db": "*",
     "@hono/node-server": "^1.14.1",
-    "hono": "^4.7.5"
+    "hono": "^4.7.5",
+    "twilio": "^5.4.0"
   },
   "devDependencies": {
     "@baubar/config": "*",
+    "@types/node": "^22.0.0",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3"
   }

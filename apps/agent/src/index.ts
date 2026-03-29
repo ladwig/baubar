@@ -1,13 +1,13 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serve } from '@hono/node-server'
-import { streamText } from 'ai'
+import { streamText, generateText } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createGroq } from '@ai-sdk/groq'
 import { buildTools, buildSystemPrompt } from '@baubar/ai'
 import { whatsappChannel } from './channels/whatsapp'
 import { AuthError, resolveOrgContext } from './lib/auth'
-import { getOrCreateThread, loadHistory, persistTurn, createFreshThread, verifyThreadOwnership, loadOrgConfig } from './lib/thread-store'
+import { getOrCreateThread, loadHistory, persistTurn, createFreshThread, verifyThreadOwnership, loadOrgConfig } from '@baubar/ai'
 import { checkRateLimit } from './lib/rate-limit'
 
 const google = createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_API_KEY })
@@ -126,6 +126,53 @@ app.post('/chat', async (c) => {
   } catch (err) {
     if (err instanceof AuthError) return c.json({ error: err.message }, 401)
     console.error('[/chat]', err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Internal API — called by Gateway service to process a WhatsApp message
+// ---------------------------------------------------------------------------
+app.post('/internal/process', async (c) => {
+  const apiKey = c.req.header('X-Api-Key')
+  if (!apiKey || apiKey !== process.env.GATEWAY_SECRET) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  const { orgId, threadId, message } = await c.req.json<{
+    orgId: string
+    threadId: string
+    message: string
+  }>()
+
+  try {
+    const [history, orgPrompt] = await Promise.all([
+      loadHistory(threadId),
+      loadOrgConfig(orgId),
+    ])
+
+    const ctx = {
+      token:   process.env.AGENT_SECRET!,
+      apiBase: process.env.WEB_API_BASE!,
+      orgId,
+      userId:  'gateway',
+    }
+
+    const result = await generateText({
+      model,
+      system: buildSystemPrompt(orgPrompt),
+      messages: [
+        ...history,
+        { role: 'user' as const, content: message },
+      ] as Parameters<typeof streamText>[0]['messages'],
+      tools: buildTools(ctx),
+      maxSteps: 5,
+    })
+
+    await persistTurn(threadId, message, result.text)
+    return c.json({ text: result.text })
+  } catch (err) {
+    console.error('[/internal/process]', err)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })

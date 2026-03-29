@@ -19,7 +19,7 @@ async function getCustomFieldDefs(orgId: string) {
 }
 
 export async function createReport(
-  actorId: string,
+  actorId: string | null,
   orgId: string,
   projectId: string,
   input: unknown,
@@ -49,7 +49,7 @@ export async function createReport(
 }
 
 export async function updateReport(
-  actorId: string,
+  actorId: string | null,
   orgId: string,
   reportId: string,
   input: unknown,
@@ -87,7 +87,7 @@ export async function updateReport(
   })
 }
 
-export async function deleteReport(actorId: string, orgId: string, reportId: string) {
+export async function deleteReport(actorId: string | null, orgId: string, reportId: string) {
   return await db.transaction(async (tx) => {
     const [report] = await tx
       .update(projectReports)

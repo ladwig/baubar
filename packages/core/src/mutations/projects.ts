@@ -19,7 +19,7 @@ async function getCustomFieldDefs(orgId: string, entityType: string) {
 }
 
 export async function createProject(
-  actorId: string,
+  actorId: string | null,
   orgId: string,
   input: unknown,
   customFieldDefs?: CustomFieldDefinition[]
@@ -49,7 +49,7 @@ export async function createProject(
 }
 
 export async function updateProject(
-  actorId: string,
+  actorId: string | null,
   orgId: string,
   projectId: string,
   input: unknown,
@@ -121,7 +121,7 @@ export async function updateProject(
   })
 }
 
-export async function addProjectMember(actorId: string, orgId: string, projectId: string, userId: string) {
+export async function addProjectMember(actorId: string | null, orgId: string, projectId: string, userId: string) {
   return await db.transaction(async (tx) => {
     const [member] = await tx
       .insert(projectMembers)
@@ -143,7 +143,7 @@ export async function addProjectMember(actorId: string, orgId: string, projectId
   })
 }
 
-export async function removeProjectMember(actorId: string, orgId: string, projectId: string, userId: string) {
+export async function removeProjectMember(actorId: string | null, orgId: string, projectId: string, userId: string) {
   return await db.transaction(async (tx) => {
     await tx
       .update(projectMembers)
@@ -162,7 +162,7 @@ export async function removeProjectMember(actorId: string, orgId: string, projec
   })
 }
 
-export async function deleteProject(actorId: string, orgId: string, projectId: string) {
+export async function deleteProject(actorId: string | null, orgId: string, projectId: string) {
   return await db.transaction(async (tx) => {
     const [project] = await tx
       .update(projects)

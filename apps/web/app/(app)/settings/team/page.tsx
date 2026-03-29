@@ -6,19 +6,29 @@ import { PageHeader } from '@baubar/ui'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 
 type OrgUser = { id: string; full_name: string | null; role: string; created_at: string | null; removed_at: string | null }
+type Me = { id: string; full_name: string | null; phone: string | null }
 
 export default function TeamPage() {
   const [users, setUsers] = useState<OrgUser[]>([])
+  const [me, setMe] = useState<Me | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ email: '', full_name: '', role: 'worker' })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [phone, setPhone] = useState('')
+  const [phoneError, setPhoneError] = useState<string | null>(null)
+  const [phoneSaving, setPhoneSaving] = useState(false)
 
   async function load() {
-    const data = await fetch('/api/v1/admin/users').then((r) => r.json())
+    const [data, meData] = await Promise.all([
+      fetch('/api/v1/admin/users').then((r) => r.json()),
+      fetch('/api/v1/me').then((r) => r.json()),
+    ])
     setUsers(data)
+    setMe(meData)
+    setPhone(meData.phone ?? '')
     setLoading(false)
   }
 
@@ -53,8 +63,27 @@ export default function TeamPage() {
     setUsers((prev) => prev.filter((u) => u.id !== userId))
   }
 
+  async function handleSavePhone(e: React.FormEvent) {
+    e.preventDefault()
+    setPhoneError(null)
+    setPhoneSaving(true)
+    const res = await fetch('/api/v1/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: phone.trim() || null }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      setMe((prev) => prev ? { ...prev, phone: data.phone } : prev)
+    } else {
+      const data = await res.json()
+      setPhoneError(data.error?.formErrors?.[0] ?? data.error ?? 'Ungültige Nummer.')
+    }
+    setPhoneSaving(false)
+  }
+
   return (
-    <div className="flex flex-col gap-6 max-w-2xl">
+    <div className="flex flex-col gap-8 max-w-2xl">
       <div className="flex items-start justify-between">
         <PageHeader title="Team" description="Mitglieder der Organisation verwalten." />
         <button
@@ -64,6 +93,35 @@ export default function TeamPage() {
           <Plus className="h-4 w-4" />
           Einladen
         </button>
+      </div>
+
+      {/* My phone number */}
+      <div className="rounded-lg border border-zinc-200 bg-white p-5 flex flex-col gap-4">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-900">Meine WhatsApp-Nummer</h3>
+          <p className="text-sm text-zinc-500 mt-0.5">
+            Damit werden deine Nachrichten via WhatsApp deinem Account zugeordnet.
+          </p>
+        </div>
+        <form onSubmit={handleSavePhone} className="flex items-start gap-3">
+          <div className="flex flex-col gap-1 flex-1">
+            <input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+4915112345678"
+              className="flex h-9 w-full rounded-md border border-zinc-200 bg-white px-3 py-1 text-sm shadow-sm placeholder:text-zinc-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-900"
+            />
+            {phoneError && <p className="text-xs text-red-500">{phoneError}</p>}
+            <p className="text-xs text-zinc-400">Format: +4915112345678 (E.164)</p>
+          </div>
+          <button
+            type="submit"
+            disabled={phoneSaving}
+            className="inline-flex h-9 items-center rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 transition-colors shrink-0"
+          >
+            {phoneSaving ? 'Speichern...' : 'Speichern'}
+          </button>
+        </form>
       </div>
 
       {showForm && (

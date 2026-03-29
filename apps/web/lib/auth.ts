@@ -4,11 +4,26 @@ import { db, orgMembers } from '@baubar/db'
 import { createSupabaseServerClient } from './supabase/server'
 
 export async function getOrgContext() {
-  const supabase = createSupabaseServerClient()
+  const headersList = headers()
 
-  // Support both cookie-based auth (browser) and Bearer token auth (agent service tools)
-  const authHeader = headers().get('Authorization')
+  // Service-to-service auth: gateway uses GATEWAY_SECRET as Bearer token + X-Org-Id header
+  const authHeader = headersList.get('Authorization')
   const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined
+
+  const gatewaySecret = process.env.AGENT_SECRET
+  if (gatewaySecret && bearerToken === gatewaySecret) {
+    const orgId = headersList.get('X-Org-Id')
+    if (orgId) {
+      // Service calls have no real user — actor_id will be null in audit events
+      return {
+        user: { id: null } as unknown as { id: string },
+        orgId,
+        role: 'service' as string,
+      }
+    }
+  }
+
+  const supabase = createSupabaseServerClient()
 
   const {
     data: { user },

@@ -33,6 +33,7 @@ export const users = pm.table('users', {
   id: uuid('id').primaryKey(),
   full_name: text('full_name'),
   avatar_url: text('avatar_url'),
+  phone: text('phone'),
   created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
 })
 
@@ -225,6 +226,60 @@ export const aiConfigs = ai.table('configs', {
   updated_at:    timestamp('updated_at', { withTimezone: true }).defaultNow(),
 })
 
+// ─── Gateway Schema ───────────────────────────────────────────────────────────
+
+export const gw = pgSchema('gateway')
+
+export const gatewayOrgNumbers = gw.table('org_numbers', {
+  id:                 uuid('id').primaryKey().defaultRandom(),
+  org_id:             uuid('org_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  phone_number:       text('phone_number').notNull(),
+  provider:           text('provider').notNull(), // 'twilio' | 'meta'
+  provider_number_id: text('provider_number_id').notNull(),
+  display_name:       text('display_name'),
+  created_at:         timestamp('created_at', { withTimezone: true }).defaultNow(),
+  deactivated_at:     timestamp('deactivated_at', { withTimezone: true }),
+})
+
+export const gatewayAllowedContacts = gw.table('allowed_contacts', {
+  id:            uuid('id').primaryKey().defaultRandom(),
+  org_id:        uuid('org_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  contact_phone: text('contact_phone').notNull(),
+  contact_id:    uuid('contact_id'),  // soft ref → pm.contacts
+  created_at:    timestamp('created_at', { withTimezone: true }).defaultNow(),
+  created_by:    uuid('created_by'),  // soft ref → pm.users
+})
+
+export const gatewayConversations = gw.table('conversations', {
+  id:              uuid('id').primaryKey().defaultRandom(),
+  org_id:          uuid('org_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  org_number_id:   uuid('org_number_id').notNull(), // → gatewayOrgNumbers
+  contact_phone:   text('contact_phone'),
+  group_id:        text('group_id'),
+  type:            text('type').notNull().default('direct'), // 'direct' | 'group'
+  thread_id:       uuid('thread_id'),  // soft ref → ai.threads
+  last_message_at: timestamp('last_message_at', { withTimezone: true }),
+  created_at:      timestamp('created_at', { withTimezone: true }).defaultNow(),
+  deactivated_at:  timestamp('deactivated_at', { withTimezone: true }),
+})
+
+export const gatewayMessages = gw.table('messages', {
+  id:                  uuid('id').primaryKey().defaultRandom(),
+  conversation_id:     uuid('conversation_id').notNull(), // → gatewayConversations
+  direction:           text('direction').notNull(), // 'inbound' | 'outbound'
+  from_number:         text('from_number').notNull(),
+  type:                text('type').notNull().default('text'), // 'text' | 'image' | 'audio' | 'document'
+  content:             text('content'),
+  media_storage_url:   text('media_storage_url'),
+  mime_type:           text('mime_type'),
+  provider_message_id: text('provider_message_id'),
+  sent_at:             timestamp('sent_at', { withTimezone: true }).defaultNow(),
+  delivered_at:        timestamp('delivered_at', { withTimezone: true }),
+  read_at:             timestamp('read_at', { withTimezone: true }),
+  failed_at:           timestamp('failed_at', { withTimezone: true }),
+  error_code:          text('error_code'),
+})
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type Organization = typeof organizations.$inferSelect
 export type User = typeof users.$inferSelect
@@ -242,3 +297,7 @@ export type Event = typeof events.$inferSelect
 export type AiThread = typeof aiThreads.$inferSelect
 export type AiMessage = typeof aiMessages.$inferSelect
 export type AiConfig = typeof aiConfigs.$inferSelect
+export type GatewayOrgNumber = typeof gatewayOrgNumbers.$inferSelect
+export type GatewayAllowedContact = typeof gatewayAllowedContacts.$inferSelect
+export type GatewayConversation = typeof gatewayConversations.$inferSelect
+export type GatewayMessage = typeof gatewayMessages.$inferSelect

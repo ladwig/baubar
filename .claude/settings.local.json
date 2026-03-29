@@ -14,7 +14,11 @@
       "Bash(/Users/daniel/Development/baubar/apps/agent/.env.local:*)",
       "Bash(curl:*)",
       "Bash(source /Users/daniel/Development/baubar/apps/agent/.env.local)",
-      "mcp__supabase__list_tables"
+      "mcp__supabase__list_tables",
+      "Bash(sed -i '' 's/# Service-to-service secret — must match apps\\\\/gateway and apps\\\\/agent/# Secret for inbound service calls from Agent — must match apps\\\\/agent AGENT_SECRET/' /Users/daniel/Development/baubar/apps/web/.env.local)",
+      "Bash(sed -i '' 's/^GATEWAY_SECRET=test$/AGENT_SECRET=test/' /Users/daniel/Development/baubar/apps/web/.env.local)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(t[''''public_url'''']\\) for t in d.get\\(''''tunnels'''',[]\\)]\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\(''''scripts'''',{}\\)\\)\")"
     ]
   },
   "enableAllProjectMcpServers": true,
