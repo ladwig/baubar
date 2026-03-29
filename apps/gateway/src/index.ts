@@ -12,6 +12,8 @@ import {
   saveMessage,
   markDelivered,
   markFailed,
+  popPendingContext,
+  setPendingContext,
 } from './store'
 import { resolveUserId, processWithAgent } from './processor'
 
@@ -128,6 +130,9 @@ async function handleInbound(rawBody: string) {
   const conversation = await findOrCreateConversation(orgNumber.org_id, orgNumber.id, msg.from)
   const threadId     = await getOrCreateThreadForConversation(orgNumber.org_id, conversation.id, msg.from)
 
+  // 3b. Read and clear any pending context the agent set on the previous turn
+  const pendingContext = await popPendingContext(conversation.id)
+
   // 4. Persist inbound message
   await saveMessage(conversation.id, 'inbound', msg.from, msg.content, msg.type, msg.providerMessageId)
 
@@ -149,7 +154,12 @@ async function handleInbound(rawBody: string) {
   // 8. Call agent for AI processing
   let reply: string
   try {
-    reply = await processWithAgent(orgNumber.org_id, threadId, msg.content, mediaTempPaths)
+    const result = await processWithAgent(orgNumber.org_id, threadId, msg.content, mediaTempPaths, pendingContext)
+    reply = result.text
+    // Persist any context the agent wants available on the next inbound message
+    if (result.pendingContext !== null) {
+      await setPendingContext(conversation.id, result.pendingContext)
+    }
   } catch (err) {
     console.error('[inbound] agent error:', err)
     reply = 'Es tut mir leid, ich konnte deine Nachricht gerade nicht verarbeiten. Bitte versuche es später erneut.'

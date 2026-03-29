@@ -1,4 +1,4 @@
-export { buildTools } from './tools/index'
+export { buildTools, buildToolsWithContext } from './tools/index'
 export { runAgent, buildSystemPrompt } from './runner'
 export { SupabaseQueueAdapter } from './queue/supabase'
 export { getOrCreateThread, createFreshThread, verifyThreadOwnership, loadHistory, loadDisplayHistory, loadOrgConfig, persistTurn } from './thread-store'

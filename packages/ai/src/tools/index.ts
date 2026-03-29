@@ -38,7 +38,29 @@ async function apiFetch(ctx: OrgContext, path: string, init?: RequestInit) {
 //   execute      – called by the agentic loop when the LLM picks this tool
 // ---------------------------------------------------------------------------
 
+export type ToolsResult = {
+  tools: ReturnType<typeof _buildTools>
+  /** After generateText completes, read this to get any pending context the agent set. */
+  getPendingContext: () => Record<string, unknown> | null
+}
+
+/**
+ * Build tools + a reader for any pending context captured during the run.
+ * Use this instead of buildTools() when you need to forward pending_context
+ * back to the caller (e.g. gateway WhatsApp flow).
+ */
+export function buildToolsWithContext(ctx: OrgContext): ToolsResult {
+  let captured: Record<string, unknown> | null = null
+  const tools = _buildTools(ctx, (c) => { captured = c })
+  return { tools, getPendingContext: () => captured }
+}
+
+/** Convenience wrapper — no pending context capture (web chat). */
 export function buildTools(ctx: OrgContext) {
+  return _buildTools(ctx)
+}
+
+function _buildTools(ctx: OrgContext, onPendingContext?: (c: Record<string, unknown>) => void) {
   return {
     // -- Projects ------------------------------------------------------------
 
@@ -155,21 +177,20 @@ export function buildTools(ctx: OrgContext) {
     add_images_to_report: tool({
       description:
         'Attach one or more already-uploaded images to a report. ' +
-        'temp_paths are the storage paths returned after the user sent images via WhatsApp. ' +
-        'Call this after the user confirms which report the images belong to.',
+        'temp_paths are the storage paths from the [Bild(er) hochgeladen] message. ' +
+        'If [Pending context from previous turn] is present, use report_id from there directly.',
       parameters: z.object({
-        project_id:  z.string().describe('UUID from list_projects'),
-        report_id:   z.string().describe('UUID of the report — from a create_report or list_reports tool result, never invented'),
-        temp_paths:  z.array(z.string()).min(1).describe('Storage temp paths from the uploaded images'),
+        report_id:  z.string().describe('UUID of the report — from a create_report or list_reports tool result, or from pending context. NEVER invent this.'),
+        temp_paths: z.array(z.string()).min(1).describe('Storage temp paths from the uploaded images'),
       }),
-      execute: async ({ project_id, report_id, temp_paths }) => {
+      execute: async ({ report_id, temp_paths }) => {
         const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
-        if (!isUuid(report_id) || !isUuid(project_id)) {
-          return { error: 'Invalid project_id or report_id. Call list_projects and list_reports first to get the correct UUIDs.' }
+        if (!isUuid(report_id)) {
+          return { error: `"${report_id}" is not a valid report ID. Call list_reports first to get the correct UUID.` }
         }
         const results = await Promise.all(
           temp_paths.map((temp_path) =>
-            apiFetch(ctx, `/api/v1/projects/${project_id}/reports/${report_id}/images`, {
+            apiFetch(ctx, `/api/v1/reports/${report_id}/images`, {
               method: 'POST',
               body: JSON.stringify({ temp_path }),
             })
@@ -180,6 +201,25 @@ export function buildTools(ctx: OrgContext) {
     }),
 
     // -- Contacts ------------------------------------------------------------
+
+    // -- Pending context (WhatsApp multi-webhook flows) -----------------------
+
+    set_pending_context: tool({
+      description:
+        'Remember context for the NEXT inbound WhatsApp message from this conversation. ' +
+        'Use when the user says something like "schick die nächsten Bilder zu diesem Bericht" — ' +
+        'store the report_id (and project_id) so that when the image webhooks arrive you can ' +
+        'attach them to the right report without asking again. ' +
+        'The context is one-shot: it is cleared automatically after being read once. ' +
+        'Only call this on WhatsApp. Do NOT call on web chat.',
+      parameters: z.object({
+        context: z.record(z.unknown()).describe('Small key/value payload, e.g. { report_id } — IDs must come from tool results, never invented'),
+      }),
+      execute: async ({ context }) => {
+        if (onPendingContext) onPendingContext(context)
+        return { ok: true }
+      },
+    }),
 
     list_contacts: tool({
       description: 'List all contacts, optionally filtered by company.',

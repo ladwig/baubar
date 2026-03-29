@@ -4,7 +4,7 @@ import { serve } from '@hono/node-server'
 import { streamText, generateText } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createGroq } from '@ai-sdk/groq'
-import { buildTools, buildSystemPrompt } from '@baubar/ai'
+import { buildTools, buildToolsWithContext, buildSystemPrompt } from '@baubar/ai'
 import { whatsappChannel } from './channels/whatsapp'
 import { AuthError, resolveOrgContext } from './lib/auth'
 import { getOrCreateThread, loadHistory, loadDisplayHistory, persistTurn, createFreshThread, verifyThreadOwnership, loadOrgConfig } from '@baubar/ai'
@@ -139,11 +139,12 @@ app.post('/internal/process', async (c) => {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 
-  const { orgId, threadId, message, mediaTempPaths = [] } = await c.req.json<{
-    orgId:           string
-    threadId:        string
-    message:         string
-    mediaTempPaths?: string[]
+  const { orgId, threadId, message, mediaTempPaths = [], pendingContext } = await c.req.json<{
+    orgId:            string
+    threadId:         string
+    message:          string
+    mediaTempPaths?:  string[]
+    pendingContext?:  Record<string, unknown> | null
   }>()
 
   try {
@@ -153,17 +154,25 @@ app.post('/internal/process', async (c) => {
     ])
 
     const ctx = {
-      token:   process.env.AGENT_SECRET!,
-      apiBase: process.env.WEB_API_BASE!,
+      token:    process.env.AGENT_SECRET!,
+      apiBase:  process.env.WEB_API_BASE!,
       orgId,
-      userId:  'gateway',
+      userId:   'gateway',
+      threadId,
     }
 
-    // If media was attached, append storage paths to the user message so the
-    // LLM knows images are available and can call add_images_to_report.
-    const userContent = mediaTempPaths.length > 0
-      ? `${message}\n\n[${mediaTempPaths.length} Bild(er) hochgeladen: ${mediaTempPaths.join(', ')}]`
-      : message
+    // Build user content: append media paths and/or pending context so the
+    // LLM has all relevant information in a single message.
+    const parts: string[] = [message]
+    if (mediaTempPaths.length > 0) {
+      parts.push(`[${mediaTempPaths.length} Bild(er) hochgeladen: ${mediaTempPaths.join(', ')}]`)
+    }
+    if (pendingContext) {
+      parts.push(`[Pending context from previous turn: ${JSON.stringify(pendingContext)}]`)
+    }
+    const userContent = parts.join('\n\n')
+
+    const { tools, getPendingContext } = buildToolsWithContext(ctx)
 
     const result = await generateText({
       model,
@@ -172,12 +181,12 @@ app.post('/internal/process', async (c) => {
         ...history,
         { role: 'user' as const, content: userContent },
       ] as Parameters<typeof streamText>[0]['messages'],
-      tools: buildTools(ctx),
+      tools,
       maxSteps: 5,
     })
 
     await persistTurn(threadId, userContent, result.response.messages)
-    return c.json({ text: result.text })
+    return c.json({ text: result.text, pendingContext: getPendingContext() })
   } catch (err) {
     console.error('[/internal/process]', err)
     return c.json({ error: 'Internal server error' }, 500)

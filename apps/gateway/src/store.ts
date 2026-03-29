@@ -106,6 +106,32 @@ export async function markDelivered(providerMessageId: string) {
     .where(eq(gatewayMessages.provider_message_id, providerMessageId))
 }
 
+/** Read and atomically clear pending_context from a conversation (one-shot). */
+export async function popPendingContext(conversationId: string): Promise<Record<string, unknown> | null> {
+  const [row] = await db
+    .select({ pending_context: gatewayConversations.pending_context })
+    .from(gatewayConversations)
+    .where(eq(gatewayConversations.id, conversationId))
+    .limit(1)
+
+  if (!row?.pending_context) return null
+
+  await db
+    .update(gatewayConversations)
+    .set({ pending_context: null })
+    .where(eq(gatewayConversations.id, conversationId))
+
+  return row.pending_context as Record<string, unknown>
+}
+
+/** Write pending_context onto a conversation (replaces whatever was there). */
+export async function setPendingContext(conversationId: string, context: Record<string, unknown> | null) {
+  await db
+    .update(gatewayConversations)
+    .set({ pending_context: context })
+    .where(eq(gatewayConversations.id, conversationId))
+}
+
 /** Mark a message as failed. */
 export async function markFailed(providerMessageId: string, errorCode?: string | null) {
   await db

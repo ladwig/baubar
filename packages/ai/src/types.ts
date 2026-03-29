@@ -10,6 +10,8 @@ export type OrgContext = {
   apiBase: string
   orgId: string
   userId: string
+  /** AI thread ID — required for set_pending_context on WhatsApp channel */
+  threadId?: string
 }
 
 // ---------------------------------------------------------------------------

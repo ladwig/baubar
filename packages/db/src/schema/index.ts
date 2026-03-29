@@ -263,6 +263,9 @@ export const gatewayConversations = gw.table('conversations', {
   last_message_at: timestamp('last_message_at', { withTimezone: true }),
   created_at:      timestamp('created_at', { withTimezone: true }).defaultNow(),
   deactivated_at:  timestamp('deactivated_at', { withTimezone: true }),
+  // Opaque context set by the agent — passed back on the next inbound message.
+  // Gateway never interprets this; only the agent reads/writes it.
+  pending_context: jsonb('pending_context'),
 })
 
 export const gatewayMessages = gw.table('messages', {

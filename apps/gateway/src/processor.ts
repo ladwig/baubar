@@ -21,14 +21,15 @@ export async function processWithAgent(
   threadId: string,
   message: string,
   mediaTempPaths: string[] = [],
-): Promise<string> {
+  incomingContext?: Record<string, unknown> | null,
+): Promise<{ text: string; pendingContext: Record<string, unknown> | null }> {
   const res = await fetch(`${process.env.AGENT_API_BASE}/internal/process`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Api-Key': process.env.GATEWAY_SECRET!,
     },
-    body: JSON.stringify({ orgId, threadId, message, mediaTempPaths }),
+    body: JSON.stringify({ orgId, threadId, message, mediaTempPaths, pendingContext: incomingContext }),
   })
 
   if (!res.ok) {
@@ -36,6 +37,6 @@ export async function processWithAgent(
     throw new Error(`Agent responded ${res.status}: ${text}`)
   }
 
-  const { text } = await res.json()
-  return text
+  const { text, pendingContext } = await res.json()
+  return { text, pendingContext: pendingContext ?? null }
 }
