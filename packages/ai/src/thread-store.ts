@@ -63,14 +63,15 @@ export async function verifyThreadOwnership(threadId: string, orgId: string): Pr
 /** Load the full message history for a thread (all roles incl. tool results), oldest first.
  *  Used by the agent to reconstruct the full conversation context for the LLM. */
 export async function loadHistory(threadId: string): Promise<ThreadMessage[]> {
+  // Fetch the most recent N messages (desc), then reverse so LLM sees them oldest-first
   const rows = await db
     .select({ role: aiMessages.role, content: aiMessages.content })
     .from(aiMessages)
     .where(eq(aiMessages.thread_id, threadId))
-    .orderBy(asc(aiMessages.seq))
+    .orderBy(desc(aiMessages.seq))
     .limit(HISTORY_LIMIT)
 
-  return rows.map((r) => ({
+  return rows.reverse().map((r) => ({
     role: r.role as ThreadMessage['role'],
     content: r.content as ThreadMessage['content'],
   }))
