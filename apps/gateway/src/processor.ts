@@ -20,6 +20,7 @@ export async function processWithAgent(
   orgId: string,
   threadId: string,
   message: string,
+  mediaTempPaths: string[] = [],
 ): Promise<string> {
   const res = await fetch(`${process.env.AGENT_API_BASE}/internal/process`, {
     method: 'POST',
@@ -27,7 +28,7 @@ export async function processWithAgent(
       'Content-Type': 'application/json',
       'X-Api-Key': process.env.GATEWAY_SECRET!,
     },
-    body: JSON.stringify({ orgId, threadId, message }),
+    body: JSON.stringify({ orgId, threadId, message, mediaTempPaths }),
   })
 
   if (!res.ok) {

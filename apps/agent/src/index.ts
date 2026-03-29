@@ -7,7 +7,7 @@ import { createGroq } from '@ai-sdk/groq'
 import { buildTools, buildSystemPrompt } from '@baubar/ai'
 import { whatsappChannel } from './channels/whatsapp'
 import { AuthError, resolveOrgContext } from './lib/auth'
-import { getOrCreateThread, loadHistory, persistTurn, createFreshThread, verifyThreadOwnership, loadOrgConfig } from '@baubar/ai'
+import { getOrCreateThread, loadHistory, loadDisplayHistory, persistTurn, createFreshThread, verifyThreadOwnership, loadOrgConfig } from '@baubar/ai'
 import { checkRateLimit } from './lib/rate-limit'
 
 const google = createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_API_KEY })
@@ -43,7 +43,7 @@ app.get('/chat', async (c) => {
       threadId = await getOrCreateThread(ctx.orgId, 'web', ctx.userId)
     }
 
-    const history = await loadHistory(threadId)
+    const history = await loadDisplayHistory(threadId)
     return c.json({ threadId, messages: history })
   } catch (err) {
     if (err instanceof AuthError) return c.json({ error: err.message }, 401)
@@ -113,9 +113,9 @@ app.post('/chat', async (c) => {
       onError: (err) => {
         console.error('[/chat] streamText error:', err)
       },
-      onFinish: async ({ text }) => {
+      onFinish: async ({ response }) => {
         try {
-          await persistTurn(threadId, lastUserMessage, text)
+          await persistTurn(threadId, lastUserMessage, response.messages)
         } catch (err) {
           console.error('[/chat] persistTurn error:', err)
         }
@@ -139,10 +139,11 @@ app.post('/internal/process', async (c) => {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 
-  const { orgId, threadId, message } = await c.req.json<{
-    orgId: string
-    threadId: string
-    message: string
+  const { orgId, threadId, message, mediaTempPaths = [] } = await c.req.json<{
+    orgId:           string
+    threadId:        string
+    message:         string
+    mediaTempPaths?: string[]
   }>()
 
   try {
@@ -158,18 +159,24 @@ app.post('/internal/process', async (c) => {
       userId:  'gateway',
     }
 
+    // If media was attached, append storage paths to the user message so the
+    // LLM knows images are available and can call add_images_to_report.
+    const userContent = mediaTempPaths.length > 0
+      ? `${message}\n\n[${mediaTempPaths.length} Bild(er) hochgeladen: ${mediaTempPaths.join(', ')}]`
+      : message
+
     const result = await generateText({
       model,
       system: buildSystemPrompt(orgPrompt),
       messages: [
         ...history,
-        { role: 'user' as const, content: message },
+        { role: 'user' as const, content: userContent },
       ] as Parameters<typeof streamText>[0]['messages'],
       tools: buildTools(ctx),
       maxSteps: 5,
     })
 
-    await persistTurn(threadId, message, result.text)
+    await persistTurn(threadId, userContent, result.response.messages)
     return c.json({ text: result.text })
   } catch (err) {
     console.error('[/internal/process]', err)

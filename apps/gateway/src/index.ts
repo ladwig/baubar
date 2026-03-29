@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { and, eq, isNull } from 'drizzle-orm'
 import { db, gatewayOrgNumbers, gatewayAllowedContacts } from '@baubar/db'
+import { createClient } from '@supabase/supabase-js'
 import { TwilioProvider } from './providers/twilio'
 import {
   findOrgNumber,
@@ -13,6 +14,40 @@ import {
   markFailed,
 } from './store'
 import { resolveUserId, processWithAgent } from './processor'
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_ANON_KEY!,
+)
+
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+
+/**
+ * Download media from Twilio and upload to Supabase Storage temp folder.
+ * Returns the storage path, or null if the mime type is not supported.
+ */
+async function uploadMediaToTemp(orgId: string, mediaUrl: string, mimeType: string | null): Promise<string | null> {
+  if (!mimeType || !ALLOWED_MIME_TYPES.includes(mimeType)) {
+    console.warn(`[media] unsupported mime type: ${mimeType}`)
+    return null
+  }
+
+  const { data, mimeType: downloadedMime } = await twilio.downloadMedia(mediaUrl)
+  const ext = (downloadedMime ?? mimeType).split('/')[1] ?? 'jpg'
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+  const storagePath = `${orgId}/temp/${filename}`
+
+  const { error } = await supabase.storage
+    .from('report-images')
+    .upload(storagePath, data, { contentType: downloadedMime ?? mimeType, upsert: false })
+
+  if (error) {
+    console.error('[media] storage upload error:', error)
+    return null
+  }
+
+  return storagePath
+}
 
 const app = new Hono()
 const twilio = new TwilioProvider()
@@ -96,17 +131,25 @@ async function handleInbound(rawBody: string) {
   // 4. Persist inbound message
   await saveMessage(conversation.id, 'inbound', msg.from, msg.content, msg.type, msg.providerMessageId)
 
-  // 5. Only process text through AI for now (images: v2)
-  if (msg.type !== 'text' || !msg.content.trim()) return
+  // 5. Skip non-text/image messages (audio, documents, location: v2)
+  if (msg.type !== 'text' && msg.type !== 'image') return
+  if (msg.type === 'text' && !msg.content.trim()) return
 
-  // 6. Resolve sender identity (phone → PM user if linked)
+  // 6. Upload any media to Supabase Storage temp folder
+  const mediaTempPaths: string[] = []
+  for (const mediaUrl of msg.mediaUrls) {
+    const path = await uploadMediaToTemp(orgNumber.org_id, mediaUrl, msg.mimeType)
+    if (path) mediaTempPaths.push(path)
+  }
+
+  // 7. Resolve sender identity (phone → PM user if linked)
   const actorId = await resolveUserId(orgNumber.org_id, msg.from)
   void actorId // available for future use (e.g. passing to agent for audit context)
 
-  // 7. Call agent for AI processing
+  // 8. Call agent for AI processing
   let reply: string
   try {
-    reply = await processWithAgent(orgNumber.org_id, threadId, msg.content)
+    reply = await processWithAgent(orgNumber.org_id, threadId, msg.content, mediaTempPaths)
   } catch (err) {
     console.error('[inbound] agent error:', err)
     reply = 'Es tut mir leid, ich konnte deine Nachricht gerade nicht verarbeiten. Bitte versuche es später erneut.'

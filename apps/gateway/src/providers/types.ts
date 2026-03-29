@@ -42,9 +42,9 @@ export type NormalizedMessage = {
   providerMessageId:  string
   timestamp:          Date
   type:               'text' | 'image' | 'audio' | 'document' | 'location'
-  /** Text content or internal Supabase Storage URL (already mirrored) */
-  content:            string
-  mimeType:           string | null
+  content:            string        // text body (empty string for image-only messages)
+  mediaUrls:          string[]      // provider-hosted media URLs (may require auth to download)
+  mimeType:           string | null // mime type of the first media item
   raw:                unknown
 }
 

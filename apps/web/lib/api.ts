@@ -14,6 +14,9 @@ export function handleError(err: unknown) {
   if (err instanceof ZodError) {
     return NextResponse.json({ error: err.flatten() }, { status: 422 })
   }
+  if (err instanceof Error && err.message === 'Report not found') {
+    return NextResponse.json({ error: 'Report not found' }, { status: 404 })
+  }
   console.error(err)
   return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
 }

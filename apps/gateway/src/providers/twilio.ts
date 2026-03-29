@@ -32,9 +32,12 @@ export class TwilioProvider implements WhatsAppProvider {
     const sid  = p.get('MessageSid') ?? ''
     const numMedia = parseInt(p.get('NumMedia') ?? '0', 10)
 
-    const hasMedia = numMedia > 0
-    const mediaUrl  = hasMedia ? (p.get('MediaUrl0') ?? '') : ''
-    const mimeType  = hasMedia ? (p.get('MediaContentType0') ?? null) : null
+    const mediaUrls: string[] = []
+    for (let i = 0; i < numMedia; i++) {
+      const url = p.get(`MediaUrl${i}`)
+      if (url) mediaUrls.push(url)
+    }
+    const mimeType = numMedia > 0 ? (p.get('MediaContentType0') ?? null) : null
 
     return {
       provider:          'twilio',
@@ -47,8 +50,9 @@ export class TwilioProvider implements WhatsAppProvider {
       messageId:         sid,
       providerMessageId: sid,
       timestamp:         new Date(),
-      type:              hasMedia ? 'image' : 'text',
-      content:           hasMedia ? mediaUrl : body,
+      type:              mediaUrls.length > 0 ? 'image' : 'text',
+      content:           body,
+      mediaUrls,
       mimeType,
       raw:               Object.fromEntries(p),
     }

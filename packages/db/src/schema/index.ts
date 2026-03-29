@@ -7,6 +7,7 @@ import {
   decimal,
   jsonb,
   timestamp,
+  bigserial,
 } from 'drizzle-orm/pg-core'
 
 export const pm = pgSchema('project_management')
@@ -212,8 +213,9 @@ export const aiThreads = ai.table('threads', {
 export const aiMessages = ai.table('messages', {
   id:         uuid('id').primaryKey().defaultRandom(),
   thread_id:  uuid('thread_id').notNull().references(() => aiThreads.id, { onDelete: 'cascade' }),
-  role:       text('role').notNull(), // 'user' | 'assistant'
-  content:    jsonb('content').notNull(), // MessageContentPart[]
+  role:       text('role').notNull(), // 'user' | 'assistant' | 'tool'
+  content:    jsonb('content').notNull(),
+  seq:        bigserial('seq', { mode: 'bigint' }),  // insertion order — used for deterministic sorting
   created_at: timestamp('created_at', { withTimezone: true }).defaultNow(),
 })
 

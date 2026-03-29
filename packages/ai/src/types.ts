@@ -55,6 +55,6 @@ export type InboundMessage = {
 
 /** A single turn stored in the thread, in the shape expected by the Vercel AI SDK. */
 export type ThreadMessage = {
-  role: 'user' | 'assistant'
-  content: string | MessageContentPart[]
+  role: 'user' | 'assistant' | 'tool'
+  content: string | MessageContentPart[] | unknown[]
 }
