@@ -104,12 +104,24 @@ async function handleInbound(rawBody: string) {
   void actorId // available for future use (e.g. passing to agent for audit context)
 
   // 7. Call agent for AI processing
-  const reply = await processWithAgent(orgNumber.org_id, threadId, msg.content)
+  let reply: string
+  try {
+    reply = await processWithAgent(orgNumber.org_id, threadId, msg.content)
+  } catch (err) {
+    console.error('[inbound] agent error:', err)
+    reply = 'Es tut mir leid, ich konnte deine Nachricht gerade nicht verarbeiten. Bitte versuche es später erneut.'
+  }
 
   // 8. Send reply
-  const outboundSid = await twilio.sendText(msg.to, msg.from, reply)
+  let outboundSid: string | undefined
+  try {
+    outboundSid = await twilio.sendText(msg.to, msg.from, reply)
+  } catch (err) {
+    console.error('[inbound] sendText error:', err)
+    return
+  }
 
-  // 8. Persist outbound message
+  // 9. Persist outbound message
   await saveMessage(conversation.id, 'outbound', msg.to, reply, 'text', outboundSid)
 }
 
