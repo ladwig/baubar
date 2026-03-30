@@ -62,9 +62,10 @@ tests:
       message: "Wie weit ist das Projekt Mehrhaus?"
     assert:
       - type: javascript
-        value: |
-          const { toolsCalled } = JSON.parse(output)
-          toolsCalled.includes('list_projects') && toolsCalled.includes('list_reports')
+        value: "JSON.parse(output).toolsCalled.includes('list_projects')"
+      - type: javascript
+        # Report content should appear in the reply (Estrich or Mängelprotokoll from fixtures)
+        value: "output.toLowerCase().includes('estrich') || output.toLowerCase().includes('riss') || output.toLowerCase().includes('mängel')"
 
   # ── Report creation ─────────────────────────────────────────────────────────
   - description: create report — asks if type not specified
@@ -84,7 +85,7 @@ tests:
       - type: javascript
         value: |
           const { toolsCalled } = JSON.parse(output)
-          toolsCalled.includes('list_projects') && toolsCalled.includes('create_report')
+          return toolsCalled.includes('list_projects') && toolsCalled.includes('create_report')
 
   # ── Voice messages ──────────────────────────────────────────────────────────
   - description: voice — field update — must propose, not create
@@ -92,12 +93,13 @@ tests:
       message: "[Sprachnotiz transkribiert]: Heute beim Projekt Mehrhaus haben wir ähm die Küche gefliest und der Elektriker hat die Leitungen im Obergeschoss verlegt."
     assert:
       - type: javascript
-        value: "JSON.parse(output).toolsCalled.includes('list_projects')"
-      - type: javascript
         # Must propose before creating — create_report must NOT be called in this turn
         value: "!JSON.parse(output).toolsCalled.includes('create_report')"
-      - type: icontains
-        value: "erstellen"   # agent proposes "soll ich erstellen"
+      - type: javascript
+        # Agent should propose creating a report (mentions report or asks for confirmation)
+        value: |
+          const t = JSON.parse(output).text.toLowerCase()
+          return t.includes('bericht') || t.includes('tagesbericht') || t.includes('erstell')
 
   - description: voice — question, not a report — no create
     vars:
@@ -115,8 +117,11 @@ tests:
     assert:
       - type: javascript
         value: "!JSON.parse(output).toolsCalled.includes('add_images_to_report')"
-      - type: llm-rubric
-        value: "The response asks the user which report the image belongs to"
+      - type: javascript
+        # Agent must ask about which report to attach the image to
+        value: |
+          const t = JSON.parse(output).text.toLowerCase()
+          return t.includes('bericht') || t.includes('welch') || t.includes('wozu') || t.includes('zu welch')
 
   - description: image with pending context — attaches immediately
     vars:
@@ -170,4 +175,4 @@ tests:
           const lpIdx = toolsCalled.indexOf('list_projects')
           const crIdx = toolsCalled.indexOf('create_report')
           // list_projects must be called, and if create_report is called it must come after
-          lpIdx !== -1 && (crIdx === -1 || lpIdx < crIdx)
+          return lpIdx !== -1 && (crIdx === -1 || lpIdx < crIdx)

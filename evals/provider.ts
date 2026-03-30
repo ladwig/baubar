@@ -3,6 +3,11 @@
  * Calls generateText directly (same as the agent) with a mocked fetch so tool
  * HTTP calls return fixture data instead of hitting a real API.
  */
+import { config } from 'dotenv'
+import { resolve } from 'path'
+// Load agent env vars (GOOGLE_API_KEY etc.) relative to this file's location
+config({ path: resolve(__dirname, '../apps/agent/.env.local') })
+
 import { generateText } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { buildTools, buildSystemPrompt } from '../packages/ai/src/index'
@@ -94,14 +99,14 @@ export default class BaubarProvider {
       userId:  'eval',
     }
 
-    const toolCalls: string[] = []
-    const toolArgs:  Record<string, unknown> = {}
-
     // Patch global fetch for this call only
     const originalFetch = globalThis.fetch
     globalThis.fetch = mockFetch as typeof fetch
 
     let text = ''
+    const toolCalls: string[] = []
+    const toolArgs:  Record<string, unknown> = {}
+
     try {
       // Support multi-turn: vars.history is a JSON array of prior messages
       const history = context.vars.history
@@ -117,14 +122,20 @@ export default class BaubarProvider {
         ],
         tools: buildTools(ctx),
         maxSteps: 5,
-        onStepFinish: ({ toolCalls: calls }) => {
-          for (const tc of calls ?? []) {
-            toolCalls.push(tc.toolName)
-            toolArgs[tc.toolName] = tc.args
-          }
+        providerOptions: {
+          google: { thinkingConfig: { thinkingBudget: 0 } },
         },
       })
+
+      // Collect tool calls from all steps — more reliable than onStepFinish
+      for (const step of result.steps) {
+        for (const tc of step.toolCalls ?? []) {
+          toolCalls.push(tc.toolName)
+          toolArgs[tc.toolName] = tc.args
+        }
+      }
       text = result.text
+
     } finally {
       globalThis.fetch = originalFetch
     }
