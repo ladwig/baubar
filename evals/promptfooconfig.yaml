@@ -2,6 +2,15 @@ description: Baubar agent LLM eval
 
 providers:
   - id: "file://provider.ts"
+    label: "Gemini 2.5 Flash"
+    config:
+      provider: google
+      model: gemini-2.5-flash
+  - id: "file://provider.ts"
+    label: "Groq Llama 3.3 70B"
+    config:
+      provider: groq
+      model: llama-3.3-70b-versatile
 
 # Each test's `prompt` is passed as the user message to the provider
 prompts:
@@ -54,6 +63,12 @@ tests:
     assert:
       - type: javascript
         value: "JSON.parse(output).toolsCalled.includes('list_projects')"
+      - type: javascript
+        # Must use the status_type filter, not list all and decide manually
+        value: "JSON.parse(output).toolArgs?.list_projects?.status_type === 'OPEN'"
+      - type: javascript
+        # Mehrhaus is IN_PROGRESS — must NOT appear in the answer
+        value: "!JSON.parse(output).text.toLowerCase().includes('mehrhaus')"
       - type: icontains
         value: "Gartenanlage"
 

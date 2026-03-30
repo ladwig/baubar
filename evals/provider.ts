@@ -8,7 +8,7 @@ import { resolve } from 'path'
 // Load agent env vars (GOOGLE_API_KEY etc.) relative to this file's location
 config({ path: resolve(__dirname, '../apps/agent/.env.local') })
 
-import { generateText } from 'ai'
+import { generateText, type LanguageModel } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { buildTools, buildSystemPrompt } from '../packages/ai/src/index'
 import { PROJECTS, REPORTS, CREATED_REPORT_STUB } from './fixtures'
@@ -85,12 +85,56 @@ function mockFetch(url: string | URL | Request, init?: RequestInit): Promise<Res
 // ---------------------------------------------------------------------------
 // Promptfoo provider — must be a class
 // ---------------------------------------------------------------------------
+
+type ProviderConfig = {
+  /** 'google' (default) | 'anthropic' */
+  provider?: string
+  /** e.g. 'gemini-2.5-flash' or 'claude-sonnet-4-6' */
+  model?: string
+  /** Human-readable label shown in the UI */
+  label?: string
+}
+
 export default class BaubarProvider {
-  id() { return 'baubar-agent' }
+  private cfg: ProviderConfig
+
+  constructor(cfg: Record<string, unknown> = {}) {
+    // Promptfoo wraps the YAML config under a nested `config` key
+    const nested = (cfg.config ?? cfg) as ProviderConfig
+    this.cfg = nested
+  }
+
+  id() { return this.cfg.label ?? `baubar-${this.cfg.provider ?? 'google'}-${this.cfg.model ?? 'gemini-2.5-flash'}` }
+
+  private async buildModel(): Promise<{ model: LanguageModel; providerOptions: Record<string, unknown> }> {
+    const provider = this.cfg.provider ?? 'google'
+    const modelId  = this.cfg.model   ?? 'gemini-2.5-flash'
+
+    if (provider === 'anthropic') {
+      // Requires: npm install @ai-sdk/anthropic
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { createAnthropic } = require('@ai-sdk/anthropic')
+      const anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+      return { model: anthropic(modelId) as LanguageModel, providerOptions: {} }
+    }
+
+    if (provider === 'groq') {
+      const { createGroq } = await import('@ai-sdk/groq')
+      const groq = createGroq({ apiKey: process.env.GROQ_API_KEY })
+      return { model: groq(modelId), providerOptions: {} }
+    }
+
+    // Default: Google
+    const google = createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_API_KEY })
+    return {
+      model: google(modelId),
+      // thinkingBudget:0 prevents Gemini 2.5 from returning empty content in some prompts
+      providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } },
+    }
+  }
 
   async callApi(prompt: string, context: { vars: Record<string, string> }) {
-    const google = createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_API_KEY })
-    const model  = google('gemini-2.5-flash')
+    const { model, providerOptions } = await this.buildModel()
 
     const ctx = {
       token:   'eval',
@@ -122,9 +166,7 @@ export default class BaubarProvider {
         ],
         tools: buildTools(ctx),
         maxSteps: 5,
-        providerOptions: {
-          google: { thinkingConfig: { thinkingBudget: 0 } },
-        },
+        providerOptions,
       })
 
       // Collect tool calls from all steps — more reliable than onStepFinish
