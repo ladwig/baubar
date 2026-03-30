@@ -50,7 +50,10 @@ export class TwilioProvider implements WhatsAppProvider {
       messageId:         sid,
       providerMessageId: sid,
       timestamp:         new Date(),
-      type:              mediaUrls.length > 0 ? 'image' : 'text',
+      type:              mimeType?.startsWith('audio/') ? 'audio'
+                       : mimeType?.startsWith('image/') ? 'image'
+                       : mediaUrls.length > 0           ? 'image'  // fallback for unknown media
+                       : 'text',
       content:           body,
       mediaUrls,
       mimeType,

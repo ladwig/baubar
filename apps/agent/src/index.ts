@@ -147,11 +147,17 @@ app.post('/internal/process', async (c) => {
     pendingContext?:  Record<string, unknown> | null
   }>()
 
+  const org = orgId.slice(0, 8)
+  const thr = threadId.slice(0, 8)
+  console.info(`[agent] org=${org} thread=${thr} media=${mediaTempPaths.length}${pendingContext ? ' +ctx' : ''} — "${message.slice(0, 80)}"`)
+
   try {
     const [history, orgPrompt] = await Promise.all([
       loadHistory(threadId),
       loadOrgConfig(orgId),
     ])
+
+    console.info(`[agent] org=${org} history=${history.length} msgs`)
 
     const ctx = {
       token:    process.env.AGENT_SECRET!,
@@ -183,12 +189,22 @@ app.post('/internal/process', async (c) => {
       ] as Parameters<typeof streamText>[0]['messages'],
       tools,
       maxSteps: 5,
+      onStepFinish: ({ toolCalls, toolResults }) => {
+        for (const tc of toolCalls ?? []) {
+          console.info(`[agent] org=${org} tool: ${tc.toolName}(${JSON.stringify(tc.args).slice(0, 80)})`)
+        }
+        for (const tr of toolResults ?? []) {
+          const preview = JSON.stringify(tr.result).slice(0, 80)
+          console.info(`[agent] org=${org} result: ${tr.toolName} → ${preview}`)
+        }
+      },
     })
 
+    console.info(`[agent] org=${org} reply: "${result.text.slice(0, 80)}"`)
     await persistTurn(threadId, userContent, result.response.messages)
     return c.json({ text: result.text, pendingContext: getPendingContext() })
   } catch (err) {
-    console.error('[/internal/process]', err)
+    console.error(`[agent] org=${org} error:`, err)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })

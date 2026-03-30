@@ -84,10 +84,11 @@ export async function saveMessage(
   content: string,
   type: string = 'text',
   providerMessageId?: string,
+  extras?: { media_storage_url?: string; mime_type?: string },
 ) {
   const [msg] = await db
     .insert(gatewayMessages)
-    .values({ conversation_id: conversationId, direction, from_number: fromNumber, type, content, provider_message_id: providerMessageId })
+    .values({ conversation_id: conversationId, direction, from_number: fromNumber, type, content, provider_message_id: providerMessageId, ...extras })
     .returning()
 
   await db

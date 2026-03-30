@@ -71,7 +71,15 @@ export async function loadHistory(threadId: string): Promise<ThreadMessage[]> {
     .orderBy(desc(aiMessages.seq))
     .limit(HISTORY_LIMIT)
 
-  return rows.reverse().map((r) => ({
+  rows.reverse()
+
+  // The window may have sliced mid-turn, leaving orphaned tool/assistant messages at
+  // the start. Gemini rejects any history that doesn't start with a user message.
+  // Drop everything before the first user message to guarantee clean turn boundaries.
+  const firstUser = rows.findIndex((r) => r.role === 'user')
+  const clean = firstUser > 0 ? rows.slice(firstUser) : rows
+
+  return clean.map((r) => ({
     role: r.role as ThreadMessage['role'],
     content: r.content as ThreadMessage['content'],
   }))

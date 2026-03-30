@@ -16,6 +16,7 @@ import {
   setPendingContext,
 } from './store'
 import { resolveUserId, processWithAgent } from './processor'
+import { transcribeAudio } from './transcribe'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -109,59 +110,103 @@ async function handleStatusCallback(params: URLSearchParams) {
   }
 }
 
+const id8 = (uuid: string) => uuid.slice(0, 8)
+
 async function handleInbound(rawBody: string) {
   const msg = twilio.parseWebhook(rawBody, {})
 
   // 1. Find org by destination number
   const orgNumber = await findOrgNumber(msg.to)
   if (!orgNumber) {
-    console.warn(`[inbound] No org found for number ${msg.to}`)
+    console.warn(`[gateway] unknown number ${msg.to}`)
     return
   }
+
+  const org = id8(orgNumber.org_id)
 
   // 2. Whitelist check
   const allowed = await isContactAllowed(orgNumber.org_id, msg.from)
   if (!allowed) {
-    console.info(`[inbound] ${msg.from} not whitelisted for org ${orgNumber.org_id}`)
+    console.warn(`[gateway] org=${org} ${msg.from} not whitelisted`)
     return
   }
 
   // 3. Find or create conversation + AI thread
   const conversation = await findOrCreateConversation(orgNumber.org_id, orgNumber.id, msg.from)
   const threadId     = await getOrCreateThreadForConversation(orgNumber.org_id, conversation.id, msg.from)
-
-  // 3b. Read and clear any pending context the agent set on the previous turn
   const pendingContext = await popPendingContext(conversation.id)
 
-  // 4. Persist inbound message
-  await saveMessage(conversation.id, 'inbound', msg.from, msg.content, msg.type, msg.providerMessageId)
+  console.info(`[gateway] org=${org} from=${msg.from} type=${msg.type} conv=${id8(conversation.id)} thread=${id8(threadId)}${pendingContext ? ' +ctx' : ''}`)
 
-  // 5. Skip non-text/image messages (audio, documents, location: v2)
-  if (msg.type !== 'text' && msg.type !== 'image') return
+  // 4. Skip unsupported message types early (documents, location, stickers: v2)
+  if (msg.type !== 'text' && msg.type !== 'image' && msg.type !== 'audio') {
+    console.info(`[gateway] skipping unsupported type "${msg.type}"`)
+    return
+  }
   if (msg.type === 'text' && !msg.content.trim()) return
 
-  // 6. Upload any media to Supabase Storage temp folder
+  // 5. Process media before persisting so we can store the transcription as content
   const mediaTempPaths: string[] = []
-  for (const mediaUrl of msg.mediaUrls) {
-    const path = await uploadMediaToTemp(orgNumber.org_id, mediaUrl, msg.mimeType)
-    if (path) mediaTempPaths.push(path)
+  let messageContent = msg.content
+  let audioStoragePath: string | undefined
+
+  if (msg.type === 'image') {
+    for (const mediaUrl of msg.mediaUrls) {
+      const path = await uploadMediaToTemp(orgNumber.org_id, mediaUrl, msg.mimeType)
+      if (path) mediaTempPaths.push(path)
+    }
+    if (mediaTempPaths.length) console.info(`[gateway] org=${org} images uploaded: ${mediaTempPaths.length}`)
   }
 
-  // 7. Resolve sender identity (phone → PM user if linked)
-  const actorId = await resolveUserId(orgNumber.org_id, msg.from)
-  void actorId // available for future use (e.g. passing to agent for audit context)
+  if (msg.type === 'audio' && msg.mediaUrls[0]) {
+    const { data, mimeType: downloadedMime } = await twilio.downloadMedia(msg.mediaUrls[0])
+    const mime = downloadedMime ?? msg.mimeType ?? 'audio/ogg'
+    const ext = mime.includes('ogg') ? 'ogg' : mime.split('/')[1] ?? 'ogg'
+    const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+    audioStoragePath = `${orgNumber.org_id}/voice/${filename}`
 
-  // 8. Call agent for AI processing
+    const { error: uploadError } = await supabase.storage
+      .from('voice-messages')
+      .upload(audioStoragePath, data, { contentType: 'application/octet-stream', upsert: false })
+
+    if (uploadError) {
+      console.warn(`[gateway] org=${org} audio storage failed (non-fatal): ${uploadError.message}`)
+      audioStoragePath = undefined
+    }
+
+    try {
+      const transcription = await transcribeAudio(data, mime)
+      messageContent = transcription
+      console.info(`[gateway] org=${org} transcribed: "${transcription.slice(0, 80)}"`)
+    } catch (err) {
+      console.error(`[gateway] org=${org} transcription failed:`, err)
+      return
+    }
+  }
+
+  // 6. Persist inbound message
+  await saveMessage(
+    conversation.id, 'inbound', msg.from, messageContent, msg.type, msg.providerMessageId,
+    audioStoragePath ? { media_storage_url: audioStoragePath, mime_type: msg.mimeType ?? undefined } : undefined,
+  )
+
+  const actorId = await resolveUserId(orgNumber.org_id, msg.from)
+  void actorId
+
+  // 7. Call agent
   let reply: string
   try {
-    const result = await processWithAgent(orgNumber.org_id, threadId, msg.content, mediaTempPaths, pendingContext)
+    const agentMessage = msg.type === 'audio'
+      ? `[Sprachnotiz transkribiert]: ${messageContent}`
+      : messageContent
+    const result = await processWithAgent(orgNumber.org_id, threadId, agentMessage, mediaTempPaths, pendingContext)
     reply = result.text
-    // Persist any context the agent wants available on the next inbound message
     if (result.pendingContext !== null) {
       await setPendingContext(conversation.id, result.pendingContext)
+      console.info(`[gateway] org=${org} pending context set: ${JSON.stringify(result.pendingContext)}`)
     }
   } catch (err) {
-    console.error('[inbound] agent error:', err)
+    console.error(`[gateway] org=${org} agent error:`, err)
     reply = 'Es tut mir leid, ich konnte deine Nachricht gerade nicht verarbeiten. Bitte versuche es später erneut.'
   }
 
@@ -169,12 +214,12 @@ async function handleInbound(rawBody: string) {
   let outboundSid: string | undefined
   try {
     outboundSid = await twilio.sendText(msg.to, msg.from, reply)
+    console.info(`[gateway] org=${id8(orgNumber.org_id)} reply sent to ${msg.from}: "${reply.slice(0, 80)}"`)
   } catch (err) {
-    console.error('[inbound] sendText error:', err)
+    console.error(`[gateway] org=${id8(orgNumber.org_id)} send failed:`, err)
     return
   }
 
-  // 9. Persist outbound message
   await saveMessage(conversation.id, 'outbound', msg.to, reply, 'text', outboundSid)
 }
 
