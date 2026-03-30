@@ -1,0 +1,173 @@
+description: Baubar agent LLM eval
+
+providers:
+  - id: "file://provider.ts"
+
+# Each test's `prompt` is passed as the user message to the provider
+prompts:
+  - "{{message}}"
+
+evaluateOptions:
+  maxConcurrency: 1   # avoid globalThis.fetch race conditions between parallel tests
+
+defaultTest:
+  vars:
+    # Simulate a typical mid-conversation state — closer to real usage than a blank thread
+    history: |
+      [
+        {"role":"user","content":"Hallo"},
+        {"role":"assistant","content":"Hallo! Wie kann ich dir helfen?"}
+      ]
+
+tests:
+  # ── Greetings / small talk — no tools ──────────────────────────────────────
+  - description: greeting — no tools
+    vars:
+      message: "Hallo!"
+    assert:
+      - type: javascript
+        value: "JSON.parse(output).toolsCalled.length === 0"
+      - type: icontains
+        value: "hallo"
+
+  - description: capability question — no tools
+    vars:
+      message: "Was kannst du?"
+    assert:
+      - type: javascript
+        value: "JSON.parse(output).toolsCalled.length === 0"
+
+  # ── Project queries ─────────────────────────────────────────────────────────
+  - description: list all projects
+    vars:
+      message: "Zeig mir alle Projekte"
+    assert:
+      - type: javascript
+        value: "JSON.parse(output).toolsCalled.includes('list_projects')"
+      - type: javascript
+        # Mehrhaus is in either the text reply or embedded in the JSON (tool result)
+        value: "output.toLowerCase().includes('mehrhaus')"
+
+  - description: list open projects only
+    vars:
+      message: "Welche Projekte sind noch offen?"
+    assert:
+      - type: javascript
+        value: "JSON.parse(output).toolsCalled.includes('list_projects')"
+      - type: icontains
+        value: "Gartenanlage"
+
+  - description: project status question — uses reports not status field
+    vars:
+      message: "Wie weit ist das Projekt Mehrhaus?"
+    assert:
+      - type: javascript
+        value: |
+          const { toolsCalled } = JSON.parse(output)
+          toolsCalled.includes('list_projects') && toolsCalled.includes('list_reports')
+
+  # ── Report creation ─────────────────────────────────────────────────────────
+  - description: create report — asks if type not specified
+    vars:
+      message: "Erstelle einen Bericht für Mehrhaus"
+    assert:
+      - type: javascript
+        # Should resolve project first, but must ask for report_type before creating
+        value: "JSON.parse(output).toolsCalled.includes('list_projects')"
+      - type: javascript
+        value: "!JSON.parse(output).toolsCalled.includes('create_report')"
+
+  - description: create report — full info provided
+    vars:
+      message: "Erstelle einen Tagesbericht für Mehrhaus: Estrich im EG wurde gegossen."
+    assert:
+      - type: javascript
+        value: |
+          const { toolsCalled } = JSON.parse(output)
+          toolsCalled.includes('list_projects') && toolsCalled.includes('create_report')
+
+  # ── Voice messages ──────────────────────────────────────────────────────────
+  - description: voice — field update — must propose, not create
+    vars:
+      message: "[Sprachnotiz transkribiert]: Heute beim Projekt Mehrhaus haben wir ähm die Küche gefliest und der Elektriker hat die Leitungen im Obergeschoss verlegt."
+    assert:
+      - type: javascript
+        value: "JSON.parse(output).toolsCalled.includes('list_projects')"
+      - type: javascript
+        # Must propose before creating — create_report must NOT be called in this turn
+        value: "!JSON.parse(output).toolsCalled.includes('create_report')"
+      - type: icontains
+        value: "erstellen"   # agent proposes "soll ich erstellen"
+
+  - description: voice — question, not a report — no create
+    vars:
+      message: "[Sprachnotiz transkribiert]: Wie viele Projekte haben wir gerade in Arbeit?"
+    assert:
+      - type: javascript
+        value: "JSON.parse(output).toolsCalled.includes('list_projects')"
+      - type: javascript
+        value: "!JSON.parse(output).toolsCalled.includes('create_report')"
+
+  # ── Image handling ──────────────────────────────────────────────────────────
+  - description: image without context — asks which report
+    vars:
+      message: "[1 Bild(er) hochgeladen: 00000001/temp/photo.jpg]"
+    assert:
+      - type: javascript
+        value: "!JSON.parse(output).toolsCalled.includes('add_images_to_report')"
+      - type: llm-rubric
+        value: "The response asks the user which report the image belongs to"
+
+  - description: image with pending context — attaches immediately
+    vars:
+      # Simulate: agent already set pending context from the previous turn
+      message: |
+        [1 Bild(er) hochgeladen: 00000001/temp/photo.jpg]
+
+        [Pending context from previous turn: {"report_id":"bbbb0001-0000-0000-0000-000000000001"}]
+    assert:
+      - type: javascript
+        value: "JSON.parse(output).toolsCalled.includes('add_images_to_report')"
+      - type: javascript
+        # Must NOT ask the user — should attach silently
+        value: "!JSON.parse(output).toolsCalled.includes('set_pending_context')"
+
+  - description: multi-turn — user says send next images to last report, then sends image
+    vars:
+      # Turn 1 happened already: user said "schick die bilder zum letzten bericht"
+      # Agent resolved report_id and called set_pending_context — simulate that history
+      history: |
+        [
+          {"role":"user","content":"Schick die nächsten Bilder zum letzten Tagesbericht von Mehrhaus"},
+          {"role":"assistant","content":"Alles klar, schick die Bilder — ich füge sie direkt zum letzten Tagesbericht von Mehrhaus ein."}
+        ]
+      message: |
+        [1 Bild(er) hochgeladen: 00000001/temp/photo.jpg]
+
+        [Pending context from previous turn: {"report_id":"bbbb0001-0000-0000-0000-000000000001"}]
+    assert:
+      - type: javascript
+        value: "JSON.parse(output).toolsCalled.includes('add_images_to_report')"
+
+  # ── Report update ───────────────────────────────────────────────────────────
+  - description: update report — merges content, no confirmation needed
+    vars:
+      message: "Füg zum letzten Tagesbericht von Mehrhaus noch hinzu: Fensterrahmen wurden eingesetzt."
+    assert:
+      - type: javascript
+        value: "JSON.parse(output).toolsCalled.includes('list_projects')"
+      - type: javascript
+        value: "JSON.parse(output).toolsCalled.includes('update_report')"
+
+  # ── Safety — never invent IDs ───────────────────────────────────────────────
+  - description: does not hallucinate project IDs — list before create
+    vars:
+      message: "Erstelle einen Tagesbericht für Projekt Mehrhaus: Dach wurde gedeckt."
+    assert:
+      - type: javascript
+        value: |
+          const { toolsCalled } = JSON.parse(output)
+          const lpIdx = toolsCalled.indexOf('list_projects')
+          const crIdx = toolsCalled.indexOf('create_report')
+          // list_projects must be called, and if create_report is called it must come after
+          lpIdx !== -1 && (crIdx === -1 || lpIdx < crIdx)
