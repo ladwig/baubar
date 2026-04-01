@@ -97,8 +97,28 @@ export class TwilioProvider implements WhatsAppProvider {
     return msg.sid
   }
 
-  async sendTypingIndicator(_from: string, _to: string): Promise<void> {
-    // Twilio does not support typing indicators for WhatsApp
+  async sendTypingIndicator(incomingMessageSid: string, _from: string, _to: string): Promise<void> {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID!
+    const authToken  = process.env.TWILIO_AUTH_TOKEN!
+
+    const res = await fetch('https://messaging.twilio.com/v2/Indicators/Typing.json', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        messageId: incomingMessageSid,
+        channel:   'whatsapp',
+      }).toString(),
+    })
+
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`Twilio typing indicator failed (${res.status}): ${text}`)
+    }
+    // Side effect: automatically marks incomingMessageSid as read in the user's WhatsApp client.
+    // Indicator stays visible for 25 s or until the reply is delivered, whichever comes first.
   }
 
   async downloadMedia(mediaUrl: string): Promise<{ data: Buffer; mimeType: string }> {
@@ -116,7 +136,9 @@ export class TwilioProvider implements WhatsAppProvider {
   }
 
   async markAsRead(_msgId: string, _from: string): Promise<void> {
-    // Twilio does not expose a mark-as-read API for WhatsApp
+    // Twilio has no standalone mark-as-read API for WhatsApp.
+    // Read marking happens automatically as a side effect of sendTypingIndicator().
+    // Call that before sending the reply instead.
   }
 
   async provisionNumber(_phone: string, _name: string): Promise<ProvisionedNumber> {

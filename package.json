@@ -17,8 +17,9 @@
   "devDependencies": {
     "prettier": "^3.4.2",
     "promptfoo": "^0.121.3",
-    "turbo": "^2.3.3"
+    "turbo": "^2.9.3"
   },
+  "packageManager": "npm@11.6.0",
   "engines": {
     "node": ">=20"
   },

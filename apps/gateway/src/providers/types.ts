@@ -11,7 +11,7 @@ export interface WhatsAppProvider {
   /** Outbound messages */
   sendText(from: string, to: string, text: string): Promise<string>
   sendMedia(from: string, to: string, mediaUrl: string, caption?: string): Promise<string>
-  sendTypingIndicator(from: string, to: string): Promise<void>
+  sendTypingIndicator(incomingMessageSid: string, from: string, to: string): Promise<void>
 
   /** Inbound — called by the webhook route after signature verification */
   parseWebhook(rawBody: string, headers: Record<string, string>): NormalizedMessage

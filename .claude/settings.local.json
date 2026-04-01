@@ -22,7 +22,11 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(list\\(d.get\\(''''dependencies'''',{}\\).keys\\(\\)\\)\\)\")",
       "Bash(npm run:*)",
       "Bash(/tmp/test_eval.mts:*)",
-      "Bash(wait)"
+      "Bash(wait)",
+      "WebFetch(domain:www.twilio.com)",
+      "WebSearch",
+      "Bash(pnpm --version)",
+      "Bash(npm --version)"
     ]
   },
   "enableAllProjectMcpServers": true,

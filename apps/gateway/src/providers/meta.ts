@@ -24,7 +24,7 @@ export class MetaProvider implements WhatsAppProvider {
   async sendMedia(_from: string, _to: string, _url: string, _caption?: string): Promise<string> {
     throw new Error('MetaProvider not implemented')
   }
-  async sendTypingIndicator(_from: string, _to: string): Promise<void> {
+  async sendTypingIndicator(_incomingMessageSid: string, _from: string, _to: string): Promise<void> {
     throw new Error('MetaProvider not implemented')
   }
   parseWebhook(_body: string, _headers: Record<string, string>): NormalizedMessage {
